@@ -13,6 +13,7 @@ import {
 } from "@/lib/constants";
 import type { ClientAccount, ClientExpense } from "@/lib/types";
 import { useCreateExpense, useUpdateExpense } from "@/hooks/use-expenses";
+import { AccountSelect } from "@/components/accounts/account-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -182,21 +183,11 @@ export function ExpenseDialog({
               control={form.control}
               name="accountId"
               render={({ field }) => (
-                <Select
-                  value={field.value || null}
+                <AccountSelect
+                  accounts={accounts}
+                  value={field.value}
                   onValueChange={field.onChange}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Elegí una cuenta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name} ({account.currency})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               )}
             />
             {errors.accountId && (

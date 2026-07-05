@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Banknote,
   MoreHorizontal,
@@ -23,6 +24,7 @@ import {
   useInvestments,
 } from "@/hooks/use-investments";
 import { PageHeader } from "@/components/page-header";
+import { AccountLabel } from "@/components/accounts/account-label";
 import { InvestmentDialog } from "@/components/investments/investment-dialog";
 import {
   CollectFixedTermDialog,
@@ -80,9 +82,9 @@ export function InvestmentsView() {
   const [collectOpen, setCollectOpen] = useState(false);
   const [collecting, setCollecting] = useState<ClientFixedTerm | null>(null);
 
-  const activeAccounts = (accounts ?? []).filter((a) => !a.archived);
-  const accountNames = useMemo(
-    () => new Map((accounts ?? []).map((a) => [a.id, a.name])),
+  const allAccounts = accounts ?? [];
+  const accountsById = useMemo(
+    () => new Map((accounts ?? []).map((a) => [a.id, a])),
     [accounts]
   );
 
@@ -175,7 +177,14 @@ export function InvestmentsView() {
                     <TableBody>
                       {data.holdings.map((holding) => (
                         <TableRow key={holding.ticker}>
-                          <TableCell className="font-medium">{holding.ticker}</TableCell>
+                          <TableCell className="font-medium">
+                            <Link
+                              href={`/inversiones/${encodeURIComponent(holding.ticker)}`}
+                              className="hover:underline"
+                            >
+                              {holding.ticker}
+                            </Link>
+                          </TableCell>
                           <TableCell>
                             <Badge variant="secondary">
                               {ASSET_TYPE_LABELS[holding.assetType]}
@@ -258,7 +267,14 @@ export function InvestmentsView() {
                             {tx.side === "compra" ? "Compra" : "Venta"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-medium">{tx.ticker}</TableCell>
+                        <TableCell className="font-medium">
+                          <Link
+                            href={`/inversiones/${encodeURIComponent(tx.ticker)}`}
+                            className="hover:underline"
+                          >
+                            {tx.ticker}
+                          </Link>
+                        </TableCell>
                         <TableCell className="text-right">
                           {tx.quantity.toLocaleString("es-AR", {
                             maximumFractionDigits: 8,
@@ -267,7 +283,16 @@ export function InvestmentsView() {
                         <TableCell className="text-right">
                           {formatMoney(tx.price, tx.currency)}
                         </TableCell>
-                        <TableCell>{accountNames.get(tx.accountId) ?? "—"}</TableCell>
+                        <TableCell>
+                          {(() => {
+                            const account = accountsById.get(tx.accountId);
+                            return account ? (
+                              <AccountLabel name={account.name} provider={account.provider} />
+                            ) : (
+                              "—"
+                            );
+                          })()}
+                        </TableCell>
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger
@@ -417,7 +442,7 @@ export function InvestmentsView() {
         open={txDialogOpen}
         onOpenChange={setTxDialogOpen}
         transaction={editingTx}
-        accounts={activeAccounts}
+        accounts={allAccounts}
       />
       <FixedTermDialog
         open={ftDialogOpen}
@@ -428,7 +453,7 @@ export function InvestmentsView() {
         open={collectOpen}
         onOpenChange={setCollectOpen}
         deposit={collecting}
-        accounts={activeAccounts}
+        accounts={allAccounts}
       />
     </div>
   );

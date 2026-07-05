@@ -4,6 +4,8 @@ import { ACCOUNT_TYPES, CURRENCIES } from "@/lib/constants";
 const accountSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
+    // Id del proveedor del catálogo ACCOUNT_PROVIDERS (para mostrar el logo)
+    provider: { type: String, trim: true },
     type: { type: String, enum: ACCOUNT_TYPES, required: true },
     currency: { type: String, enum: CURRENCIES, required: true },
     // Saldo autoritativo: las actions de ingresos/gastos/inversiones lo ajustan con $inc

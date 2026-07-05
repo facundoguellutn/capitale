@@ -15,6 +15,7 @@ import { useDeleteExpense, useExpenses } from "@/hooks/use-expenses";
 import { PageHeader } from "@/components/page-header";
 import { MonthPicker } from "@/components/month-picker";
 import { ExpenseDialog } from "@/components/expenses/expense-dialog";
+import { AccountLabel } from "@/components/accounts/account-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,8 +53,8 @@ export function ExpensesView() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ClientExpense | null>(null);
 
-  const accountNames = useMemo(
-    () => new Map((accounts ?? []).map((a) => [a.id, a.name])),
+  const accountsById = useMemo(
+    () => new Map((accounts ?? []).map((a) => [a.id, a])),
     [accounts]
   );
 
@@ -144,7 +145,14 @@ export function ExpensesView() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {accountNames.get(expense.accountId) ?? "—"}
+                      {(() => {
+                        const account = accountsById.get(expense.accountId);
+                        return account ? (
+                          <AccountLabel name={account.name} provider={account.provider} />
+                        ) : (
+                          "—"
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="max-w-40 truncate text-muted-foreground">
                       {expense.note || "—"}
@@ -195,7 +203,7 @@ export function ExpensesView() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         expense={editing}
-        accounts={(accounts ?? []).filter((a) => !a.archived)}
+        accounts={accounts ?? []}
       />
     </div>
   );

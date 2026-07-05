@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -15,8 +15,14 @@ import {
   CURRENCIES,
   TRANSACTION_SIDES,
 } from "@/lib/constants";
-import type { ClientAccount, ClientInvestmentTransaction } from "@/lib/types";
+import type {
+  AssetSearchResult,
+  ClientAccount,
+  ClientInvestmentTransaction,
+} from "@/lib/types";
 import { useCreateInvestment, useUpdateInvestment } from "@/hooks/use-investments";
+import { AccountSelect } from "@/components/accounts/account-select";
+import { AssetCombobox } from "@/components/investments/asset-combobox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -74,6 +80,9 @@ export function InvestmentDialog({
     defaultValues: defaults(),
   });
 
+  // Activo elegido en el buscador (mantiene coingeckoId y logo)
+  const [selectedAsset, setSelectedAsset] = useState<AssetSearchResult | null>(null);
+
   const assetType = form.watch("assetType");
 
   useEffect(() => {
@@ -95,8 +104,26 @@ export function InvestmentDialog({
             }
           : defaults()
       );
+      setSelectedAsset(
+        transaction
+          ? {
+              ticker: transaction.ticker,
+              assetType: transaction.assetType,
+              coingeckoId: transaction.coingeckoId,
+            }
+          : null
+      );
     }
   }, [open, transaction, form]);
+
+  function handleAssetChange(item: AssetSearchResult | null) {
+    setSelectedAsset(item);
+    form.setValue("ticker", item?.ticker ?? "");
+    form.setValue("coingeckoId", item?.coingeckoId ?? "");
+    if (item) {
+      form.clearErrors(["ticker", "coingeckoId"]);
+    }
+  }
 
   function onSubmit(values: InvestmentTransactionInput) {
     const options = {
@@ -135,7 +162,14 @@ export function InvestmentDialog({
                 control={form.control}
                 name="assetType"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select
+                    value={field.value}
+                    onValueChange={(v) => {
+                      field.onChange(v);
+                      // Al cambiar el tipo, el activo elegido deja de ser válido
+                      handleAssetChange(null);
+                    }}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
@@ -175,31 +209,18 @@ export function InvestmentDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="inv-ticker">Ticker</Label>
-              <Input
-                id="inv-ticker"
-                placeholder={assetType === "cripto" ? "BTC" : "GGAL, AAPL, AL30"}
-                {...form.register("ticker")}
+              <Label>Activo</Label>
+              <AssetCombobox
+                assetType={assetType}
+                value={selectedAsset}
+                onChange={handleAssetChange}
               />
-              {errors.ticker && (
-                <p className="text-sm text-destructive">{errors.ticker.message}</p>
+              {(errors.ticker || errors.coingeckoId) && (
+                <p className="text-sm text-destructive">
+                  {errors.ticker?.message ?? "Elegí un activo de la lista"}
+                </p>
               )}
             </div>
-            {assetType === "cripto" && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="inv-coingecko">Id de CoinGecko</Label>
-                <Input
-                  id="inv-coingecko"
-                  placeholder="bitcoin, ethereum, tether"
-                  {...form.register("coingeckoId")}
-                />
-                {errors.coingeckoId && (
-                  <p className="text-sm text-destructive">
-                    {errors.coingeckoId.message}
-                  </p>
-                )}
-              </div>
-            )}
             <div className="flex flex-col gap-2">
               <Label htmlFor="inv-date">Fecha</Label>
               <Input id="inv-date" type="date" {...form.register("date")} />
@@ -267,18 +288,11 @@ export function InvestmentDialog({
                 control={form.control}
                 name="accountId"
                 render={({ field }) => (
-                  <Select value={field.value || null} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Elegí una cuenta" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {accounts.map((account) => (
-                        <SelectItem key={account.id} value={account.id}>
-                          {account.name} ({account.currency})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <AccountSelect
+                    accounts={accounts}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  />
                 )}
               />
               {errors.accountId && (

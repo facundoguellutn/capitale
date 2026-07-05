@@ -18,6 +18,28 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   efectivo: "Efectivo",
 };
 
+// Catálogo de cuentas predefinidas. Agregar acá los nuevos proveedores.
+export type AccountProvider = {
+  id: string;
+  name: string;
+  logo: string;
+  type: AccountType;
+};
+
+export const ACCOUNT_PROVIDERS: AccountProvider[] = [
+  { id: "iol", name: "Invertir Online", logo: "/logos/iol.png", type: "broker" },
+  { id: "cocos", name: "Cocos Capital", logo: "/logos/cocos.png", type: "broker" },
+  { id: "brubank", name: "Brubank", logo: "/logos/brubank.png", type: "banco" },
+  { id: "naranjax", name: "Naranja X", logo: "/logos/naranjax.png", type: "billetera" },
+];
+
+export const ACCOUNT_PROVIDER_IDS = ACCOUNT_PROVIDERS.map((p) => p.id);
+
+export function getAccountProvider(id?: string | null): AccountProvider | undefined {
+  if (!id) return undefined;
+  return ACCOUNT_PROVIDERS.find((p) => p.id === id);
+}
+
 export const INCOME_KINDS = ["sueldo", "freelance", "otro"] as const;
 export type IncomeKind = (typeof INCOME_KINDS)[number];
 

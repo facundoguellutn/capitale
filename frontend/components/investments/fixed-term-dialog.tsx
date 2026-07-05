@@ -14,6 +14,7 @@ import {
   useCreateFixedTerm,
   useUpdateFixedTerm,
 } from "@/hooks/use-investments";
+import { AccountSelect } from "@/components/accounts/account-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -266,18 +267,11 @@ export function CollectFixedTermDialog({
         </DialogHeader>
         <div className="flex flex-col gap-2">
           <Label>Cuenta destino</Label>
-          <Select value={accountId} onValueChange={(v) => setAccountId(v as string)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Elegí una cuenta" />
-            </SelectTrigger>
-            <SelectContent>
-              {accounts.map((account) => (
-                <SelectItem key={account.id} value={account.id}>
-                  {account.name} ({account.currency})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <AccountSelect
+            accounts={accounts}
+            value={accountId}
+            onValueChange={setAccountId}
+          />
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>

@@ -12,6 +12,7 @@ import type {
 export type ClientAccount = {
   id: string;
   name: string;
+  provider?: string;
   type: AccountType;
   currency: Currency;
   balance: number;
@@ -82,6 +83,30 @@ export type Quote = {
   price: number;
   currency: Currency;
   pctChange?: number;
+};
+
+export type AssetSearchResult = {
+  ticker: string;
+  name?: string;
+  assetType: AssetType;
+  coingeckoId?: string;
+  logo?: string;
+};
+
+// Vela diaria para el gráfico del activo (timestamp en segundos)
+export type AssetCandle = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+};
+
+export type AssetHistoryResponse = {
+  ticker: string;
+  currency: Currency;
+  candles: AssetCandle[];
 };
 
 export type QuotesResponse = {

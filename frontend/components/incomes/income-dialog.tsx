@@ -9,6 +9,7 @@ import { incomeSchema, type IncomeInput } from "@/lib/schemas";
 import { CURRENCIES, INCOME_KINDS, INCOME_KIND_LABELS } from "@/lib/constants";
 import type { ClientAccount, ClientIncome } from "@/lib/types";
 import { useCreateIncome, useUpdateIncome } from "@/hooks/use-incomes";
+import { AccountSelect } from "@/components/accounts/account-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -192,21 +193,11 @@ export function IncomeDialog({
               control={form.control}
               name="accountId"
               render={({ field }) => (
-                <Select
-                  value={field.value || null}
+                <AccountSelect
+                  accounts={accounts}
+                  value={field.value}
                   onValueChange={field.onChange}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Elegí una cuenta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name} ({account.currency})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               )}
             />
             {errors.accountId && (

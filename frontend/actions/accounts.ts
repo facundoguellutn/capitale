@@ -25,7 +25,11 @@ export async function updateAccount(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
 
   await dbConnect();
-  const updated = await Account.findByIdAndUpdate(id, parsed.data);
+  const { provider, ...rest } = parsed.data;
+  const update = provider
+    ? { ...rest, provider }
+    : { ...rest, $unset: { provider: 1 } };
+  const updated = await Account.findByIdAndUpdate(id, update);
   if (!updated) return { ok: false, error: "Cuenta no encontrada" };
   return { ok: true };
 }

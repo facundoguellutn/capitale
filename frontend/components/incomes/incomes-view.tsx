@@ -12,6 +12,7 @@ import { useDeleteIncome, useIncomes } from "@/hooks/use-incomes";
 import { PageHeader } from "@/components/page-header";
 import { MonthPicker } from "@/components/month-picker";
 import { IncomeDialog } from "@/components/incomes/income-dialog";
+import { AccountLabel } from "@/components/accounts/account-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,8 +40,8 @@ export function IncomesView() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ClientIncome | null>(null);
 
-  const accountNames = useMemo(
-    () => new Map((accounts ?? []).map((a) => [a.id, a.name])),
+  const accountsById = useMemo(
+    () => new Map((accounts ?? []).map((a) => [a.id, a])),
     [accounts]
   );
 
@@ -115,7 +116,14 @@ export function IncomesView() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {accountNames.get(income.accountId) ?? "—"}
+                      {(() => {
+                        const account = accountsById.get(income.accountId);
+                        return account ? (
+                          <AccountLabel name={account.name} provider={account.provider} />
+                        ) : (
+                          "—"
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-right font-medium text-positive">
                       +{formatMoney(income.amount, income.currency)}
@@ -163,7 +171,7 @@ export function IncomesView() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         income={editing}
-        accounts={(accounts ?? []).filter((a) => !a.archived)}
+        accounts={accounts ?? []}
       />
     </div>
   );

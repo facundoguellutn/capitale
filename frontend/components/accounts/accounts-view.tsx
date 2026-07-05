@@ -13,6 +13,7 @@ import {
 } from "@/hooks/use-accounts";
 import { PageHeader } from "@/components/page-header";
 import { AccountDialog } from "@/components/accounts/account-dialog";
+import { AccountLabel } from "@/components/accounts/account-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -119,7 +120,11 @@ export function AccountsView() {
                     className={account.archived ? "opacity-50" : undefined}
                   >
                     <TableCell className="font-medium">
-                      {account.name}
+                      <AccountLabel
+                        name={account.name}
+                        provider={account.provider}
+                        logoSize={18}
+                      />
                       {account.archived && (
                         <Badge variant="secondary" className="ml-2">
                           Archivada

@@ -15,6 +15,10 @@ const dateString = z.coerce.date();
 
 export const accountSchema = z.object({
   name: z.string().min(1, "Ingresá un nombre"),
+  provider: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined),
   type: z.enum(ACCOUNT_TYPES),
   currency: z.enum(CURRENCIES),
   balance: z.coerce.number(),

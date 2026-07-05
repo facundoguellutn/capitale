@@ -16,6 +16,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jose": "^6.2.3",
+    "lightweight-charts": "^5.2.0",
     "lucide-react": "^1.23.0",
     "mongoose": "^9.7.3",
     "next": "16.2.10",
