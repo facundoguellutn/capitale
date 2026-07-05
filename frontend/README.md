@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Capitale — Gestión de finanzas personales
 
-## Getting Started
+App personal para llevar el control de tus finanzas: cuentas (bancos, billeteras, brokers), ingresos, gastos, inversiones (acciones argentinas, CEDEARs, bonos, cripto, plazos fijos), cotizaciones en vivo y dashboard con rendimientos.
 
-First, run the development server:
+**Stack**: Next.js 16 (App Router) · MongoDB + Mongoose · TanStack React Query · react-hook-form + zod · shadcn/ui (base-nova) · Recharts.
+
+## Setup
+
+1. **Base de datos**: creá un cluster gratuito en [MongoDB Atlas](https://cloud.mongodb.com) y copiá la URI de conexión.
+
+2. **Variables de entorno**: en `.env.local` completá:
+
+   ```
+   MONGODB_URI=mongodb+srv://usuario:password@cluster.mongodb.net/capitale
+   AUTH_SECRET=<un secreto largo y aleatorio, ej: openssl rand -base64 32>
+   ```
+
+3. **Correr la app**:
+
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+4. Abrí [http://localhost:3000](http://localhost:3000) → te redirige a `/registro` para crear tu usuario (la app es de un solo usuario: después del primer registro se bloquea).
+
+### Probar sin Atlas
+
+Para desarrollo sin internet podés levantar un MongoDB en memoria:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+node scripts/dev-mongo.mjs
+# en otra terminal:
+MONGODB_URI=mongodb://127.0.0.1:37017/capitale npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+(Los datos se pierden al cerrar el proceso.)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Cotizaciones
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Se traen de APIs públicas gratuitas con cache de 5 minutos:
 
-## Learn More
+- **Dólar** (oficial/blue/MEP/CCL): [DolarAPI](https://dolarapi.com)
+- **Acciones / CEDEARs / bonos BYMA**: [data912](https://data912.com) — usá el símbolo tal como cotiza (GGAL, AAPL, AL30)
+- **Cripto**: [CoinGecko](https://www.coingecko.com) — al cargar una compra de cripto indicá el *id de CoinGecko* (`bitcoin`, `ethereum`, `tether`, …)
 
-To learn more about Next.js, take a look at the following resources:
+La conversión ARS ↔ USD de toda la app usa el **dólar MEP**.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Notas de uso
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- El **saldo de cada cuenta** se ajusta automáticamente al cargar ingresos, gastos y operaciones de inversión (y se revierte al editarlos o borrarlos). También podés ajustarlo a mano editando la cuenta.
+- Los **bonos** se cargan en nominales, con precio por 100 nominales (como cotizan en el mercado).
+- Los **plazos fijos** no descuentan de ninguna cuenta al crearse; al "cobrar" se acredita capital + interés en la cuenta que elijas.
+- La **cartera** se deriva del historial de operaciones (precio promedio ponderado); el dashboard guarda un snapshot diario del patrimonio para el gráfico de evolución.
