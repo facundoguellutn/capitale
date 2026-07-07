@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Bar,
   BarChart,
@@ -18,9 +19,16 @@ import {
 } from "@/lib/constants";
 import { currentMonth, monthLabel } from "@/lib/month";
 import { cn, formatMoney, formatPercent } from "@/lib/utils";
+import { convertAmount, formatMoneyIn } from "@/lib/fx";
+import { useDisplayCurrency } from "@/components/display-currency";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { PageHeader } from "@/components/page-header";
 import { MonthPicker } from "@/components/month-picker";
+import { AssetLogo } from "@/components/asset-logo";
+import {
+  MarketMovers,
+  PortfolioMovers,
+} from "@/components/dashboard/movers-cards";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -73,6 +81,7 @@ const compactARS = new Intl.NumberFormat("es-AR", {
 export function DashboardView() {
   const [month, setMonth] = useState(currentMonth());
   const { data, isPending, isError } = useDashboard(month);
+  const { displayCurrency } = useDisplayCurrency();
 
   if (isPending) {
     return (
@@ -95,8 +104,14 @@ export function DashboardView() {
     );
   }
 
+  // Valores del pie convertidos a la moneda de display (fallback a ARS sin MEP)
+  const pieCurrency: "ARS" | "USD" =
+    displayCurrency === "USD" && data.mep != null ? "USD" : "ARS";
   const assetTypeData = data.byAssetType.map((entry, i) => ({
     ...entry,
+    valueARS:
+      convertAmount(entry.valueARS, "ARS", pieCurrency, data.mep) ??
+      entry.valueARS,
     fill: SLICE_COLORS[i % SLICE_COLORS.length],
   }));
   const assetTypeConfig = Object.fromEntries(
@@ -129,16 +144,22 @@ export function DashboardView() {
               Patrimonio total
             </p>
             <p className="mt-1.5 font-heading text-5xl font-medium tracking-tight tabular-nums">
-              {formatMoney(data.totalARS, "ARS")}
+              {displayCurrency === "USD" && data.mep != null
+                ? formatMoney(data.totalUSD, "USD")
+                : formatMoney(data.totalARS, "ARS")}
             </p>
           </div>
           <dl className="flex divide-x divide-border">
             <div className="pr-8">
               <dt className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                En dólares (MEP)
+                {displayCurrency === "USD" && data.mep != null
+                  ? "En pesos"
+                  : "En dólares (MEP)"}
               </dt>
               <dd className="mt-1 font-mono text-lg tabular-nums">
-                {formatMoney(data.totalUSD, "USD")}
+                {displayCurrency === "USD" && data.mep != null
+                  ? formatMoney(data.totalARS, "ARS")
+                  : formatMoney(data.totalUSD, "USD")}
               </dd>
             </div>
             <div className="pl-8">
@@ -157,7 +178,9 @@ export function DashboardView() {
         <Card>
           <CardHeader>
             <CardTitle>Distribución por tipo de activo</CardTitle>
-            <CardDescription>Valuado en pesos al MEP</CardDescription>
+            <CardDescription>
+              Valuado en {pieCurrency === "ARS" ? "pesos" : "dólares"} al MEP
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {assetTypeData.length > 0 ? (
@@ -168,7 +191,7 @@ export function DashboardView() {
                       <ChartTooltipContent
                         formatter={(value, name) => (
                           <span>
-                            {name}: {formatMoney(Number(value), "ARS")}
+                            {name}: {formatMoney(Number(value), pieCurrency)}
                           </span>
                         )}
                       />
@@ -209,8 +232,13 @@ export function DashboardView() {
                       <div className="mb-1 flex items-center justify-between text-sm">
                         <span className="font-medium">{account.name}</span>
                         <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                          {formatMoney(account.valueARS, "ARS")} ·{" "}
-                          {formatPercent(share).replace("+", "")}
+                          {formatMoneyIn(
+                            account.valueARS,
+                            "ARS",
+                            displayCurrency,
+                            data.mep
+                          )}{" "}
+                          · {formatPercent(share).replace("+", "")}
                         </span>
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -328,6 +356,11 @@ export function DashboardView() {
         </Card>
       </div>
 
+      <div className="mb-4 grid gap-4 lg:grid-cols-2">
+        <PortfolioMovers holdings={data.holdings} mep={data.mep} />
+        <MarketMovers />
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Rendimiento de inversiones</CardTitle>
@@ -341,21 +374,60 @@ export function DashboardView() {
                   <TableHead>Ticker</TableHead>
                   <TableHead className="text-right">Costo</TableHead>
                   <TableHead className="text-right">Valor actual</TableHead>
+                  <TableHead className="text-right">Hoy</TableHead>
                   <TableHead className="text-right">Resultado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.holdings.map((holding) => (
                   <TableRow key={holding.ticker}>
-                    <TableCell className="font-medium">{holding.ticker}</TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
-                      {formatMoney(holding.costBasis, holding.currency)}
+                    <TableCell className="p-0 font-medium">
+                      <Link
+                        href={`/inversiones/${encodeURIComponent(holding.ticker)}?type=${holding.assetType}${holding.coingeckoId ? `&coingeckoId=${encodeURIComponent(holding.coingeckoId)}` : ""}`}
+                        className="flex items-center gap-2 px-2 py-2 hover:underline"
+                      >
+                        <AssetLogo
+                          ticker={holding.ticker}
+                          assetType={holding.assetType}
+                        />
+                        {holding.ticker}
+                      </Link>
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
-                      {holding.valueARS != null ? (
-                        formatMoney(holding.valueARS, "ARS")
+                      {formatMoneyIn(
+                        holding.costBasis,
+                        holding.currency,
+                        displayCurrency,
+                        data.mep
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">
+                      {(() => {
+                        const value =
+                          displayCurrency === "ARS"
+                            ? holding.valueARS
+                            : holding.valueUSD;
+                        if (value != null)
+                          return formatMoney(value, displayCurrency);
+                        if (holding.valueARS != null)
+                          return formatMoney(holding.valueARS, "ARS");
+                        return <Badge variant="secondary">Sin cotización</Badge>;
+                      })()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">
+                      {holding.pctChange != null ? (
+                        <span
+                          className={cn(
+                            "font-medium",
+                            holding.pctChange >= 0
+                              ? "text-positive"
+                              : "text-negative"
+                          )}
+                        >
+                          {formatPercent(holding.pctChange / 100)}
+                        </span>
                       ) : (
-                        <Badge variant="secondary">Sin cotización</Badge>
+                        "—"
                       )}
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
@@ -367,7 +439,17 @@ export function DashboardView() {
                           )}
                         >
                           {holding.pnl >= 0 ? "+" : ""}
-                          {formatMoney(holding.pnl, "ARS")}
+                          {(() => {
+                            const converted = convertAmount(
+                              holding.pnl,
+                              "ARS",
+                              displayCurrency,
+                              data.mep
+                            );
+                            return converted != null
+                              ? formatMoney(converted, displayCurrency)
+                              : formatMoney(holding.pnl, "ARS");
+                          })()}
                           {holding.pnlPct != null &&
                             ` (${formatPercent(holding.pnlPct)})`}
                         </span>

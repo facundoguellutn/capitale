@@ -27,10 +27,11 @@ export type AccountProvider = {
 };
 
 export const ACCOUNT_PROVIDERS: AccountProvider[] = [
-  { id: "iol", name: "Invertir Online", logo: "/logos/iol.png", type: "broker" },
+  { id: "iol", name: "Invertir Online", logo: "/logos/iol.jpg", type: "broker" },
   { id: "cocos", name: "Cocos Capital", logo: "/logos/cocos.png", type: "broker" },
-  { id: "brubank", name: "Brubank", logo: "/logos/brubank.png", type: "banco" },
-  { id: "naranjax", name: "Naranja X", logo: "/logos/naranjax.png", type: "billetera" },
+  { id: "brubank", name: "Brubank", logo: "/logos/brubank.jpg", type: "banco" },
+  { id: "naranjax", name: "Naranja X", logo: "/logos/naranjax.jpg", type: "billetera" },
+  { id: "mercadopago", name: "Mercado Pago", logo: "/logos/mercado.png", type: "billetera" },
 ];
 
 export const ACCOUNT_PROVIDER_IDS = ACCOUNT_PROVIDERS.map((p) => p.id);
@@ -80,15 +81,31 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   otros: "Otros",
 };
 
-export const ASSET_TYPES = ["accion", "cedear", "bono", "cripto"] as const;
+export const ASSET_TYPES = [
+  "accion",
+  "cedear",
+  "bono",
+  "letra",
+  "on",
+  "cripto",
+] as const;
 export type AssetType = (typeof ASSET_TYPES)[number];
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   accion: "Acción argentina",
   cedear: "CEDEAR",
   bono: "Bono",
+  letra: "Letra del Tesoro",
+  on: "Obligación negociable",
   cripto: "Cripto",
 };
+
+// Tipos de renta fija que cotizan por 100 nominales (el precio es "por 100")
+export const PER_100_ASSET_TYPES: readonly AssetType[] = ["bono", "letra", "on"];
+
+export function isPer100(assetType: AssetType): boolean {
+  return PER_100_ASSET_TYPES.includes(assetType);
+}
 
 export const TRANSACTION_SIDES = ["compra", "venta"] as const;
 export type TransactionSide = (typeof TRANSACTION_SIDES)[number];

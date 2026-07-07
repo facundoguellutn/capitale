@@ -1,9 +1,14 @@
 "use client";
 
 import { cn, formatMoney, formatPercent } from "@/lib/utils";
+import { formatMoneyIn } from "@/lib/fx";
+import { AssetLogo } from "@/components/asset-logo";
+import { useDisplayCurrency } from "@/components/display-currency";
 import { useQuotes } from "@/hooks/use-quotes";
 import { PageHeader } from "@/components/page-header";
+import { MarketTable } from "@/components/quotes/market-table";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
   CardContent,
@@ -25,6 +30,7 @@ const DOLAR_ORDER = ["oficial", "blue", "bolsa", "contadoconliqui", "cripto", "t
 
 export function QuotesView() {
   const { data, isPending, isError } = useQuotes();
+  const { displayCurrency } = useDisplayCurrency();
 
   const dolares = (data?.dolares ?? [])
     .filter((d) => DOLAR_ORDER.includes(d.casa))
@@ -37,11 +43,22 @@ export function QuotesView() {
         description={
           data
             ? `Actualizado: ${new Date(data.updatedAt).toLocaleTimeString("es-AR")} (se refresca cada 5 minutos)`
-            : "Dólar y activos en cartera"
+            : "Dólar, tu cartera y el mercado"
         }
       />
 
-      {isPending ? (
+      <Tabs defaultValue="resumen">
+        <TabsList>
+          <TabsTrigger value="resumen">Resumen</TabsTrigger>
+          <TabsTrigger value="accion">Acciones</TabsTrigger>
+          <TabsTrigger value="cedear">CEDEARs</TabsTrigger>
+          <TabsTrigger value="bono">Bonos</TabsTrigger>
+          <TabsTrigger value="letra">Letras</TabsTrigger>
+          <TabsTrigger value="on">ONs</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="resumen">
+          {isPending ? (
         <div className="grid gap-4 sm:grid-cols-3">
           <Skeleton className="h-28 w-full" />
           <Skeleton className="h-28 w-full" />
@@ -95,9 +112,22 @@ export function QuotesView() {
                   <TableBody>
                     {data.quotes.map((quote) => (
                       <TableRow key={quote.ticker}>
-                        <TableCell className="font-medium">{quote.ticker}</TableCell>
+                        <TableCell className="font-medium">
+                          <span className="flex items-center gap-2">
+                            <AssetLogo
+                              ticker={quote.ticker}
+                              assetType={quote.assetType}
+                            />
+                            {quote.ticker}
+                          </span>
+                        </TableCell>
                         <TableCell className="text-right">
-                          {formatMoney(quote.price, quote.currency)}
+                          {formatMoneyIn(
+                            quote.price,
+                            quote.currency,
+                            displayCurrency,
+                            data.mep
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           {quote.pctChange != null ? (
@@ -128,6 +158,24 @@ export function QuotesView() {
           </Card>
         </>
       )}
+        </TabsContent>
+
+        <TabsContent value="accion">
+          <MarketTable type="accion" />
+        </TabsContent>
+        <TabsContent value="cedear">
+          <MarketTable type="cedear" />
+        </TabsContent>
+        <TabsContent value="bono">
+          <MarketTable type="bono" />
+        </TabsContent>
+        <TabsContent value="letra">
+          <MarketTable type="letra" />
+        </TabsContent>
+        <TabsContent value="on">
+          <MarketTable type="on" />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

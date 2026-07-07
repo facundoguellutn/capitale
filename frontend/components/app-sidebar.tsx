@@ -25,7 +25,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 
-const NAV_ITEMS = [
+export const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/cuentas", label: "Cuentas", icon: Wallet },
   { href: "/ingresos", label: "Ingresos", icon: ArrowUpCircle },

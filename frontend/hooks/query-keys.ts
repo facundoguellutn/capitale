@@ -5,5 +5,6 @@ export const qk = {
   investments: ["investments"] as const,
   fixedTerms: ["fixed-terms"] as const,
   quotes: ["quotes"] as const,
+  markets: (type: string) => ["markets", type] as const,
   dashboard: ["dashboard"] as const,
 };

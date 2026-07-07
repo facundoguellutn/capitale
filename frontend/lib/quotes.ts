@@ -1,11 +1,17 @@
 import "server-only";
 
-import { FX_CASA, type AssetType, type Currency } from "@/lib/constants";
+import {
+  ASSET_TYPES,
+  FX_CASA,
+  type AssetType,
+  type Currency,
+} from "@/lib/constants";
 import type {
   AssetCandle,
   AssetHistoryResponse,
   AssetSearchResult,
   DolarRate,
+  MarketQuote,
   Quote,
 } from "@/lib/types";
 
@@ -20,12 +26,19 @@ type BymaQuote = {
   pct_change: number;
 };
 
-type BymaKind = "arg_stocks" | "arg_cedears" | "arg_bonds";
+type BymaKind =
+  | "arg_stocks"
+  | "arg_cedears"
+  | "arg_bonds"
+  | "arg_notes"
+  | "arg_corp";
 
 const BYMA_KIND_BY_ASSET: Record<Exclude<AssetType, "cripto">, BymaKind> = {
   accion: "arg_stocks",
   cedear: "arg_cedears",
   bono: "arg_bonds",
+  letra: "arg_notes",
+  on: "arg_corp",
 };
 
 export async function getDolarRates(): Promise<DolarRate[]> {
@@ -43,7 +56,7 @@ export function getMepRate(dolares: DolarRate[]): number | null {
   return (mep.compra + mep.venta) / 2;
 }
 
-async function getBymaQuotes(kind: BymaKind): Promise<BymaQuote[]> {
+export async function getBymaQuotes(kind: BymaKind): Promise<BymaQuote[]> {
   const res = await fetch(`https://data912.com/live/${kind}`, {
     next: { revalidate: REVALIDATE, tags: ["quotes"] },
   });
@@ -100,6 +113,7 @@ export async function getQuotes(requests: QuoteRequest[]): Promise<Quote[]> {
             price: match.c,
             currency: "ARS" as Currency,
             pctChange: match.pct_change,
+            assetType: req.assetType,
           });
         }
       }
@@ -119,6 +133,7 @@ export async function getQuotes(requests: QuoteRequest[]): Promise<Quote[]> {
             ticker: req.ticker,
             price,
             currency: "USD" as Currency,
+            assetType: req.assetType,
           });
         }
       }
@@ -179,13 +194,62 @@ export async function searchAssets(
       return aStarts - bStarts || a.localeCompare(b);
     })
     .slice(0, 15);
-  return symbols.map((ticker) => ({ ticker, assetType }));
+  return symbols.map((ticker) => ({
+    ticker,
+    assetType,
+    // Parqet tiene logos por símbolo para acciones y CEDEARs
+    logo:
+      assetType === "accion" || assetType === "cedear"
+        ? `https://assets.parqet.com/logos/symbol/${encodeURIComponent(ticker)}?format=png`
+        : undefined,
+  }));
 }
 
+// Busca en todos los tipos de activo a la vez (para el command palette).
+// Cada fuente falla de forma independiente.
+export async function searchAllAssets(query: string): Promise<AssetSearchResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const types: AssetType[] = [...ASSET_TYPES];
+  const settled = await Promise.allSettled(
+    types.map((type) => searchAssets(type, q))
+  );
+  const results: AssetSearchResult[] = [];
+  for (const [i, outcome] of settled.entries()) {
+    if (outcome.status === "fulfilled") {
+      results.push(...outcome.value.slice(0, 8));
+    } else {
+      console.error(`Error buscando activos (${types[i]}):`, outcome.reason);
+    }
+  }
+  return results;
+}
+
+// Panel completo de un tipo de activo BYMA con precio y variación diaria
+export async function getMarketQuotes(
+  assetType: Exclude<AssetType, "cripto">
+): Promise<MarketQuote[]> {
+  const data = await getBymaQuotes(BYMA_KIND_BY_ASSET[assetType]);
+  const seen = new Set<string>();
+  const quotes: MarketQuote[] = [];
+  for (const item of data) {
+    const ticker = item.symbol.toUpperCase();
+    if (seen.has(ticker) || item.c == null) continue;
+    seen.add(ticker);
+    quotes.push({ ticker, price: item.c, pctChange: item.pct_change ?? 0 });
+  }
+  return quotes.sort((a, b) => a.ticker.localeCompare(b.ticker));
+}
+
+// Letras y ONs no tienen path histórico propio en data912; el de bonds
+// devuelve lo que exista (suele ser poco para letras cortas)
 const BYMA_HISTORY_PATH: Record<Exclude<AssetType, "cripto">, string> = {
   accion: "stocks",
   cedear: "cedears",
   bono: "bonds",
+  letra: "bonds",
+  on: "bonds",
 };
 
 type Data912Bar = {
@@ -247,14 +311,4 @@ export async function getAssetHistory(
     }))
     .sort((a, b) => a.time - b.time);
   return { ticker, currency: "ARS", candles };
-}
-
-// Valor de mercado de una posición según el tipo de activo.
-// Bonos: el precio es por 100 nominales.
-export function positionValue(
-  assetType: AssetType,
-  quantity: number,
-  price: number
-): number {
-  return assetType === "bono" ? (quantity * price) / 100 : quantity * price;
 }

@@ -1,7 +1,7 @@
 import "server-only";
 
-import type { AssetType, Currency } from "@/lib/constants";
-import { positionValue } from "@/lib/quotes";
+import { isPer100, type AssetType, type Currency } from "@/lib/constants";
+import { positionValue } from "@/lib/analytics";
 import type { Holding, Quote } from "@/lib/types";
 
 export type PortfolioTransaction = {
@@ -74,11 +74,10 @@ export function computeHoldings(
       coingeckoId: pos.coingeckoId,
       quantity: pos.quantity,
       costBasis: pos.costBasis,
-      // Precio promedio en la convención de mercado (bonos: por 100 nominales)
-      avgPrice:
-        pos.assetType === "bono"
-          ? (pos.costBasis / pos.quantity) * 100
-          : pos.costBasis / pos.quantity,
+      // Precio promedio en la convención de mercado (renta fija: por 100)
+      avgPrice: isPer100(pos.assetType)
+        ? (pos.costBasis / pos.quantity) * 100
+        : pos.costBasis / pos.quantity,
       currency: pos.currency,
     }));
 }

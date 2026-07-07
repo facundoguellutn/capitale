@@ -3,14 +3,25 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { ASSET_TYPE_LABELS, type Currency } from "@/lib/constants";
+import {
+  ASSET_TYPE_LABELS,
+  type AssetType,
+  type Currency,
+} from "@/lib/constants";
 import { cn, formatDate, formatMoney, formatPercent } from "@/lib/utils";
+import { convertAmount, formatMoneyIn } from "@/lib/fx";
+import { computeZones } from "@/lib/analytics";
 import type { AssetCandle } from "@/lib/types";
+import { useDisplayCurrency } from "@/components/display-currency";
 import { useInvestments } from "@/hooks/use-investments";
 import { useAssetHistory } from "@/hooks/use-assets";
-import { AssetChart } from "@/components/investments/asset-chart";
+import { AssetChart, type TradeMarker } from "@/components/investments/asset-chart";
+import { AssetMetrics } from "@/components/investments/asset-metrics";
+import { PositionEvolution } from "@/components/investments/position-evolution";
+import { PositionSimulator } from "@/components/investments/position-simulator";
+import { AssetLogo } from "@/components/asset-logo";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -42,6 +53,40 @@ function PctBadge({ value }: { value: number | null }) {
   );
 }
 
+// Métrica destacada de la fila "Tu posición"
+function Stat({
+  label,
+  sub,
+  className,
+  children,
+}: {
+  label: string;
+  sub?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd>
+        <span
+          className={cn(
+            "mt-1 block text-2xl font-semibold tracking-tight",
+            className
+          )}
+        >
+          {children}
+        </span>
+        {sub && (
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            {sub}
+          </span>
+        )}
+      </dd>
+    </div>
+  );
+}
+
 // Variación porcentual entre el último cierre y el cierre en/antes de `fromTime`
 function pctChangeSince(candles: AssetCandle[], fromTime: number): number | null {
   if (candles.length < 2) return null;
@@ -55,9 +100,19 @@ function pctChangeSince(candles: AssetCandle[], fromTime: number): number | null
   return (last.close - base.close) / base.close;
 }
 
-export function AssetView({ ticker }: { ticker: string }) {
+export function AssetView({
+  ticker,
+  initialType,
+  initialCoingeckoId,
+}: {
+  ticker: string;
+  initialType?: AssetType;
+  initialCoingeckoId?: string;
+}) {
   const upper = ticker.toUpperCase();
   const { data, isPending } = useInvestments();
+  const { displayCurrency } = useDisplayCurrency();
+  const mep = data?.mep ?? null;
 
   const transactions = useMemo(
     () =>
@@ -68,12 +123,15 @@ export function AssetView({ ticker }: { ticker: string }) {
   );
   const holding = data?.holdings.find((h) => h.ticker === upper);
 
-  const assetType = holding?.assetType ?? transactions[0]?.assetType;
+  const assetType = initialType ?? holding?.assetType ?? transactions[0]?.assetType;
   const coingeckoId =
-    holding?.coingeckoId ?? transactions.find((tx) => tx.coingeckoId)?.coingeckoId;
+    initialCoingeckoId ??
+    holding?.coingeckoId ??
+    transactions.find((tx) => tx.coingeckoId)?.coingeckoId;
 
   const history = useAssetHistory(upper, assetType, coingeckoId);
-  const candles = history.data?.candles ?? [];
+  const historyCandles = history.data?.candles;
+  const candles = useMemo(() => historyCandles ?? [], [historyCandles]);
   const priceCurrency: Currency = history.data?.currency ?? "ARS";
 
   const lastClose = candles.length > 0 ? candles[candles.length - 1].close : null;
@@ -93,6 +151,26 @@ export function AssetView({ ticker }: { ticker: string }) {
     ];
   }, [candles]);
 
+  // Marcadores de operaciones propias para el gráfico de precios
+  const trades = useMemo<TradeMarker[]>(
+    () =>
+      transactions.map((tx) => ({
+        time: Math.floor(new Date(tx.date).getTime() / 1000),
+        side: tx.side,
+        quantity: tx.quantity,
+      })),
+    [transactions]
+  );
+
+  const zones = useMemo(() => computeZones(candles), [candles]);
+
+  // PPC en la moneda de las velas (convertido al MEP actual si difiere)
+  const ppc =
+    holding != null
+      ? convertAmount(holding.avgPrice, holding.currency, priceCurrency, mep)
+      : null;
+  const ppcApprox = holding != null && holding.currency !== priceCurrency;
+
   const dailyChange =
     holding?.pctChange != null
       ? holding.pctChange / 100
@@ -101,7 +179,7 @@ export function AssetView({ ticker }: { ticker: string }) {
           candles[candles.length - 2].close
         : null;
 
-  if (isPending) {
+  if (isPending && !initialType) {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-10 w-64" />
@@ -113,12 +191,16 @@ export function AssetView({ ticker }: { ticker: string }) {
   if (!assetType) {
     return (
       <div>
-        <Button variant="ghost" size="sm" render={<Link href="/inversiones" />}>
+        <Link
+          href="/inversiones"
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
+        >
           <ArrowLeft data-icon="inline-start" />
           Volver a inversiones
-        </Button>
+        </Link>
         <p className="py-16 text-center text-sm text-muted-foreground">
-          No encontramos operaciones con el activo {upper}.
+          No encontramos operaciones con el activo {upper}. Probá buscarlo con
+          Ctrl+K para ver su cotización.
         </p>
       </div>
     );
@@ -127,24 +209,26 @@ export function AssetView({ ticker }: { ticker: string }) {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 mb-2"
-          render={<Link href="/inversiones" />}
+        <Link
+          href="/inversiones"
+          className={cn(
+            buttonVariants({ variant: "ghost", size: "sm" }),
+            "-ml-2 mb-2"
+          )}
         >
           <ArrowLeft data-icon="inline-start" />
           Inversiones
-        </Button>
+        </Link>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex items-center gap-3">
+            <AssetLogo ticker={upper} assetType={assetType} className="size-9 text-xs" />
             <h1 className="text-3xl font-semibold tracking-tight">{upper}</h1>
             <Badge variant="secondary">{ASSET_TYPE_LABELS[assetType]}</Badge>
           </div>
           <div className="text-right">
             <p className="text-2xl font-semibold">
               {currentPrice != null
-                ? formatMoney(currentPrice, priceCurrency)
+                ? formatMoneyIn(currentPrice, priceCurrency, displayCurrency, mep)
                 : "Sin cotización"}
             </p>
             {dailyChange != null && (
@@ -165,10 +249,124 @@ export function AssetView({ ticker }: { ticker: string }) {
               No se pudo cargar el histórico de precios.
             </p>
           ) : (
-            <AssetChart candles={candles} />
+            <>
+              <AssetChart
+                candles={candles}
+                trades={trades}
+                ppc={ppc}
+                ppcApprox={ppcApprox}
+                zones={zones}
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Precios en {priceCurrency} (moneda de cotización)
+                {ppc != null &&
+                  " · el PPC incluye comisiones de compra (es tu break-even)"}
+                {ppc != null && ppcApprox && " · PPC convertido al MEP actual"}
+              </p>
+            </>
           )}
         </CardContent>
       </Card>
+
+      {holding && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Tu posición</CardTitle>
+            <CardDescription>
+              Tenencia actual calculada desde tus operaciones
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
+              <Stat label="Cantidad">
+                {holding.quantity.toLocaleString("es-AR", {
+                  maximumFractionDigits: 8,
+                })}
+              </Stat>
+              <Stat label="Precio promedio" sub="Con comisiones incluidas">
+                {formatMoneyIn(
+                  holding.avgPrice,
+                  holding.currency,
+                  displayCurrency,
+                  mep
+                )}
+              </Stat>
+              <Stat label="Costo total">
+                {formatMoneyIn(
+                  holding.costBasis,
+                  holding.currency,
+                  displayCurrency,
+                  mep
+                )}
+              </Stat>
+              {(() => {
+                const primary =
+                  displayCurrency === "ARS" ? holding.valueARS : holding.valueUSD;
+                const secondary =
+                  displayCurrency === "ARS" ? holding.valueUSD : holding.valueARS;
+                const secondaryCurrency =
+                  displayCurrency === "ARS" ? "USD" : "ARS";
+                return (
+                  <Stat
+                    label="Valor actual"
+                    sub={
+                      primary != null && secondary != null
+                        ? formatMoney(secondary, secondaryCurrency)
+                        : undefined
+                    }
+                  >
+                    {primary != null
+                      ? formatMoney(primary, displayCurrency)
+                      : secondary != null
+                        ? formatMoney(secondary, secondaryCurrency)
+                        : "—"}
+                  </Stat>
+                );
+              })()}
+              <Stat
+                label="Resultado"
+                className={cn(
+                  holding.pnl != null &&
+                    (holding.pnl >= 0 ? "text-positive" : "text-negative")
+                )}
+                sub={
+                  holding.pnlPct != null ? (
+                    <span
+                      className={cn(
+                        "font-medium",
+                        holding.pnl != null && holding.pnl >= 0
+                          ? "text-positive"
+                          : "text-negative"
+                      )}
+                    >
+                      {formatPercent(holding.pnlPct)}
+                    </span>
+                  ) : undefined
+                }
+              >
+                {holding.pnl != null ? (
+                  <>
+                    {holding.pnl >= 0 ? "+" : ""}
+                    {(() => {
+                      const converted = convertAmount(
+                        holding.pnl,
+                        "ARS",
+                        displayCurrency,
+                        mep
+                      );
+                      return converted != null
+                        ? formatMoney(converted, displayCurrency)
+                        : formatMoney(holding.pnl, "ARS");
+                    })()}
+                  </>
+                ) : (
+                  "—"
+                )}
+              </Stat>
+            </dl>
+          </CardContent>
+        </Card>
+      )}
 
       {variations.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-4">
@@ -185,77 +383,37 @@ export function AssetView({ ticker }: { ticker: string }) {
         </div>
       )}
 
+      {transactions.length > 0 && (
+        <PositionEvolution
+          transactions={transactions}
+          candles={candles}
+          assetType={assetType}
+          priceCurrency={priceCurrency}
+          mep={mep}
+        />
+      )}
+
+      {candles.length > 0 && (
+        <AssetMetrics
+          candles={candles}
+          assetType={assetType}
+          priceCurrency={priceCurrency}
+          currentPrice={currentPrice}
+          holding={holding}
+          allHoldings={data?.holdings ?? []}
+          transactions={transactions}
+          mep={mep}
+        />
+      )}
+
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Tu posición</CardTitle>
-            <CardDescription>
-              {holding
-                ? "Tenencia actual calculada desde tus operaciones"
-                : "No tenés posición abierta en este activo"}
-            </CardDescription>
-          </CardHeader>
-          {holding && (
-            <CardContent>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                <div>
-                  <dt className="text-muted-foreground">Cantidad</dt>
-                  <dd className="font-medium">
-                    {holding.quantity.toLocaleString("es-AR", {
-                      maximumFractionDigits: 8,
-                    })}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Precio promedio</dt>
-                  <dd className="font-medium">
-                    {formatMoney(holding.avgPrice, holding.currency)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Costo total</dt>
-                  <dd className="font-medium">
-                    {formatMoney(holding.costBasis, holding.currency)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Valor actual</dt>
-                  <dd className="font-medium">
-                    {holding.valueARS != null
-                      ? formatMoney(holding.valueARS, "ARS")
-                      : "—"}
-                    {holding.valueUSD != null && (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · {formatMoney(holding.valueUSD, "USD")}
-                      </span>
-                    )}
-                  </dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-muted-foreground">Resultado</dt>
-                  <dd>
-                    {holding.pnl != null ? (
-                      <span
-                        className={cn(
-                          "text-lg font-semibold",
-                          holding.pnl >= 0 ? "text-positive" : "text-negative"
-                        )}
-                      >
-                        {holding.pnl >= 0 ? "+" : ""}
-                        {formatMoney(holding.pnl, "ARS")}
-                        {holding.pnlPct != null &&
-                          ` (${formatPercent(holding.pnlPct)})`}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            </CardContent>
-          )}
-        </Card>
+        <PositionSimulator
+          holding={holding}
+          assetType={assetType}
+          currentPrice={currentPrice}
+          priceCurrency={priceCurrency}
+          mep={mep}
+        />
 
         <Card>
           <CardHeader>

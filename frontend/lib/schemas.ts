@@ -56,7 +56,9 @@ export const investmentTransactionSchema = z
       .transform((v) => v?.toLowerCase().trim() || undefined),
     side: z.enum(TRANSACTION_SIDES),
     quantity: money,
-    price: money,
+    // Permite 0 para dividendos en acciones / ajustes de ratio (suman
+    // cantidad sin mover efectivo)
+    price: z.coerce.number().min(0, "No puede ser negativo"),
     currency: z.enum(CURRENCIES),
     date: dateString,
     accountId: objectId,
@@ -70,6 +72,12 @@ export const investmentTransactionSchema = z
 export type InvestmentTransactionInput = z.infer<
   typeof investmentTransactionSchema
 >;
+
+// Importación masiva de operaciones (desde archivos de brokers)
+export const investmentTransactionsBulkSchema = z
+  .array(investmentTransactionSchema)
+  .min(1, "No hay operaciones para importar")
+  .max(500, "Máximo 500 operaciones por importación");
 
 export const fixedTermSchema = z
   .object({

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { getAccountProvider } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +17,8 @@ export function AccountLabel({
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-2", className)}>
       {providerInfo && (
-        <Image
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
           src={providerInfo.logo}
           alt=""
           width={logoSize}

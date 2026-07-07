@@ -29,6 +29,21 @@ export function useAssetSearch(assetType: AssetType, query: string) {
   });
 }
 
+// Búsqueda en todos los tipos de activo a la vez (command palette)
+export function useGlobalAssetSearch(query: string) {
+  const debouncedQuery = useDebouncedValue(query.trim(), 300);
+  return useQuery({
+    queryKey: ["asset-search", "all", debouncedQuery],
+    queryFn: () =>
+      fetchJson<AssetSearchResult[]>(
+        `/api/assets/search?type=all&q=${encodeURIComponent(debouncedQuery)}`
+      ),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useAssetHistory(
   ticker: string,
   assetType: AssetType | undefined,

@@ -1,5 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar";
+import { CommandPalette } from "@/components/command-palette";
+import { CurrencyToggle } from "@/components/currency-toggle";
 import {
   SidebarInset,
   SidebarProvider,
@@ -17,8 +19,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <SidebarInset>
           <header className="flex h-12 shrink-0 items-center gap-2 px-4">
             <SidebarTrigger className="-ml-1" />
+            <div className="ml-auto">
+              <CurrencyToggle />
+            </div>
           </header>
           <div className="flex-1 overflow-x-hidden px-6 pb-6">{children}</div>
+          <CommandPalette />
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

@@ -83,6 +83,7 @@ export type Quote = {
   price: number;
   currency: Currency;
   pctChange?: number;
+  assetType?: AssetType;
 };
 
 export type AssetSearchResult = {
@@ -107,6 +108,20 @@ export type AssetHistoryResponse = {
   ticker: string;
   currency: Currency;
   candles: AssetCandle[];
+};
+
+// Cotización del panel completo de mercado (acciones/cedears/bonos)
+export type MarketQuote = {
+  ticker: string;
+  price: number;
+  pctChange: number;
+};
+
+export type MarketsResponse = {
+  type: AssetType;
+  quotes: MarketQuote[];
+  mep: number | null;
+  updatedAt: string;
 };
 
 export type QuotesResponse = {

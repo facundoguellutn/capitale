@@ -1,9 +1,11 @@
 "use server";
 
 import { requireUser } from "@/lib/auth";
+import { isPer100 } from "@/lib/constants";
 import { dbConnect } from "@/lib/db";
 import {
   investmentTransactionSchema,
+  investmentTransactionsBulkSchema,
   type InvestmentTransactionInput,
 } from "@/lib/schemas";
 import type { ActionResult } from "@/lib/types";
@@ -23,10 +25,10 @@ function cashEffect(tx: {
   price: number;
   fee?: number | null;
 }) {
-  const gross =
-    tx.assetType === "bono"
-      ? (tx.quantity * tx.price) / 100
-      : tx.quantity * tx.price;
+  // Renta fija (bonos, letras, ONs): precio por 100 nominales
+  const gross = isPer100(tx.assetType)
+    ? (tx.quantity * tx.price) / 100
+    : tx.quantity * tx.price;
   const fee = tx.fee ?? 0;
   return tx.side === "compra" ? -(gross + fee) : gross - fee;
 }
@@ -45,6 +47,70 @@ export async function createInvestmentTransaction(
     { $inc: { balance: cashEffect(parsed.data) } }
   );
   return { ok: true };
+}
+
+export type BulkCreateResult =
+  | { ok: true; inserted: number; skipped: number }
+  | { ok: false; error: string };
+
+// Clave para detectar operaciones ya importadas (re-importar el mismo archivo)
+function duplicateKey(tx: {
+  ticker: string;
+  date: Date;
+  side: string;
+  quantity: number;
+  price: number;
+}) {
+  return [tx.ticker, tx.date.toISOString(), tx.side, tx.quantity, tx.price].join("|");
+}
+
+export async function createInvestmentTransactionsBulk(
+  inputs: InvestmentTransactionInput[]
+): Promise<BulkCreateResult> {
+  await requireUser();
+  const parsed = investmentTransactionsBulkSchema.safeParse(inputs);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+
+  await dbConnect();
+
+  // Saltea las operaciones que ya existen con misma clave
+  const existing = await InvestmentTransaction.find({
+    $or: parsed.data.map((tx) => ({
+      ticker: tx.ticker,
+      date: tx.date,
+      side: tx.side,
+      quantity: tx.quantity,
+      price: tx.price,
+    })),
+  }).lean();
+  const existingKeys = new Set(
+    existing.map((tx) =>
+      duplicateKey({ ...tx, date: new Date(tx.date as Date) })
+    )
+  );
+  const toInsert = parsed.data.filter(
+    (tx) => !existingKeys.has(duplicateKey(tx))
+  );
+  const skipped = parsed.data.length - toInsert.length;
+  if (toInsert.length === 0) return { ok: true, inserted: 0, skipped };
+
+  const docs = await InvestmentTransaction.insertMany(toInsert);
+
+  // Un solo ajuste de balance por cuenta con el efecto neto del batch
+  const effectByAccount = new Map<string, number>();
+  for (const tx of toInsert) {
+    effectByAccount.set(
+      tx.accountId,
+      (effectByAccount.get(tx.accountId) ?? 0) + cashEffect(tx)
+    );
+  }
+  await Promise.all(
+    [...effectByAccount.entries()].map(([accountId, effect]) =>
+      Account.updateOne({ _id: accountId }, { $inc: { balance: effect } })
+    )
+  );
+
+  return { ok: true, inserted: docs.length, skipped };
 }
 
 export async function updateInvestmentTransaction(

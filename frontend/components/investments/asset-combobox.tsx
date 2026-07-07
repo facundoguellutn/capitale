@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-/* eslint-disable @next/next/no-img-element */
 import type { AssetType } from "@/lib/constants";
 import type { AssetSearchResult } from "@/lib/types";
 import { useAssetSearch } from "@/hooks/use-assets";
+import { AssetLogo } from "@/components/asset-logo";
 import {
   Combobox,
   ComboboxContent,
@@ -55,7 +55,15 @@ export function AssetCombobox({
     >
       <ComboboxInput
         className="w-full"
-        placeholder={assetType === "cripto" ? "BTC, ETH..." : "GGAL, AAPL, AL30..."}
+        placeholder={
+          assetType === "cripto"
+            ? "BTC, ETH..."
+            : assetType === "letra"
+              ? "S30S6, X30N6..."
+              : assetType === "on"
+                ? "YMCHO, TLC1O..."
+                : "GGAL, AAPL, AL30..."
+        }
         showClear
       />
       <ComboboxContent>
@@ -63,15 +71,12 @@ export function AssetCombobox({
         <ComboboxList>
           {(item: AssetSearchResult) => (
             <ComboboxItem key={itemKey(item)} value={item}>
-              {item.logo && (
-                <img
-                  src={item.logo}
-                  alt=""
-                  width={16}
-                  height={16}
-                  className="shrink-0 rounded-full"
-                />
-              )}
+              <AssetLogo
+                ticker={item.ticker}
+                assetType={item.assetType}
+                logo={item.logo}
+                className="size-4 text-[7px]"
+              />
               <span className="font-medium">{item.ticker}</span>
               {item.name && (
                 <span className="truncate text-muted-foreground">{item.name}</span>

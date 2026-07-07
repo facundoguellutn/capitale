@@ -8,10 +8,13 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ASSET_TYPE_LABELS } from "@/lib/constants";
 import { cn, formatDate, formatMoney, formatPercent } from "@/lib/utils";
+import { convertAmount, formatMoneyIn } from "@/lib/fx";
+import { useDisplayCurrency } from "@/components/display-currency";
 import type {
   ClientFixedTerm,
   ClientInvestmentTransaction,
@@ -25,13 +28,14 @@ import {
 } from "@/hooks/use-investments";
 import { PageHeader } from "@/components/page-header";
 import { AccountLabel } from "@/components/accounts/account-label";
+import { AssetLogo } from "@/components/asset-logo";
 import { InvestmentDialog } from "@/components/investments/investment-dialog";
 import {
   CollectFixedTermDialog,
   FixedTermDialog,
 } from "@/components/investments/fixed-term-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -72,6 +76,7 @@ export function InvestmentsView() {
   const { data, isPending } = useInvestments();
   const { data: fixedTerms, isPending: ftPending } = useFixedTerms();
   const { data: accounts } = useAccounts();
+  const { displayCurrency } = useDisplayCurrency();
   const deleteTx = useDeleteInvestment();
   const deleteFt = useDeleteFixedTerm();
 
@@ -115,6 +120,13 @@ export function InvestmentsView() {
         title="Inversiones"
         description="Cartera, operaciones y plazos fijos"
       >
+        <Link
+          href="/inversiones/importar"
+          className={buttonVariants({ variant: "outline" })}
+        >
+          <Upload data-icon="inline-start" />
+          Importar
+        </Link>
         <Button
           variant="outline"
           onClick={() => {
@@ -156,11 +168,14 @@ export function InvestmentsView() {
                   <p className="mb-4 text-sm text-muted-foreground">
                     Valor total de la cartera:{" "}
                     <span className="font-medium text-foreground">
-                      {formatMoney(totalValueARS, "ARS")}
+                      {formatMoneyIn(totalValueARS, "ARS", displayCurrency, data.mep)}
                     </span>
-                    {data.mep != null && (
-                      <> · {formatMoney(totalValueARS / data.mep, "USD")} (MEP)</>
-                    )}
+                    {data.mep != null &&
+                      (displayCurrency === "ARS" ? (
+                        <> · {formatMoney(totalValueARS / data.mep, "USD")} (MEP)</>
+                      ) : (
+                        <> · {formatMoney(totalValueARS, "ARS")}</>
+                      ))}
                   </p>
                   <Table>
                     <TableHeader>
@@ -170,7 +185,9 @@ export function InvestmentsView() {
                         <TableHead className="text-right">Cantidad</TableHead>
                         <TableHead className="text-right">PPC</TableHead>
                         <TableHead className="text-right">Precio actual</TableHead>
-                        <TableHead className="text-right">Valor (ARS)</TableHead>
+                        <TableHead className="text-right">
+                          Valor ({displayCurrency})
+                        </TableHead>
                         <TableHead className="text-right">Resultado</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -180,8 +197,12 @@ export function InvestmentsView() {
                           <TableCell className="font-medium">
                             <Link
                               href={`/inversiones/${encodeURIComponent(holding.ticker)}`}
-                              className="hover:underline"
+                              className="flex items-center gap-2 hover:underline"
                             >
+                              <AssetLogo
+                                ticker={holding.ticker}
+                                assetType={holding.assetType}
+                              />
                               {holding.ticker}
                             </Link>
                           </TableCell>
@@ -196,25 +217,66 @@ export function InvestmentsView() {
                             })}
                           </TableCell>
                           <TableCell className="text-right">
-                            {formatMoney(holding.avgPrice, holding.currency)}
+                            {formatMoneyIn(
+                              holding.avgPrice,
+                              holding.currency,
+                              displayCurrency,
+                              data.mep
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             {holding.currentPrice != null ? (
-                              formatMoney(
+                              formatMoneyIn(
                                 holding.currentPrice,
-                                holding.assetType === "cripto" ? "USD" : "ARS"
+                                holding.assetType === "cripto" ? "USD" : "ARS",
+                                displayCurrency,
+                                data.mep
                               )
                             ) : (
                               <Badge variant="secondary">Sin cotización</Badge>
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            {holding.valueARS != null
-                              ? formatMoney(holding.valueARS, "ARS")
-                              : "—"}
+                            {(() => {
+                              const value =
+                                displayCurrency === "ARS"
+                                  ? holding.valueARS
+                                  : holding.valueUSD;
+                              if (value != null)
+                                return formatMoney(value, displayCurrency);
+                              // Sin MEP no hay conversión: mostrar lo que haya
+                              if (holding.valueARS != null)
+                                return formatMoney(holding.valueARS, "ARS");
+                              if (holding.valueUSD != null)
+                                return formatMoney(holding.valueUSD, "USD");
+                              return "—";
+                            })()}
                           </TableCell>
                           <TableCell className="text-right">
-                            <PnlText pnl={holding.pnl} pnlPct={holding.pnlPct} currency="ARS" />
+                            {(() => {
+                              const converted =
+                                holding.pnl != null
+                                  ? convertAmount(
+                                      holding.pnl,
+                                      "ARS",
+                                      displayCurrency,
+                                      data.mep
+                                    )
+                                  : null;
+                              return converted != null ? (
+                                <PnlText
+                                  pnl={converted}
+                                  pnlPct={holding.pnlPct}
+                                  currency={displayCurrency}
+                                />
+                              ) : (
+                                <PnlText
+                                  pnl={holding.pnl}
+                                  pnlPct={holding.pnlPct}
+                                  currency="ARS"
+                                />
+                              );
+                            })()}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -270,8 +332,12 @@ export function InvestmentsView() {
                         <TableCell className="font-medium">
                           <Link
                             href={`/inversiones/${encodeURIComponent(tx.ticker)}`}
-                            className="hover:underline"
+                            className="flex items-center gap-2 hover:underline"
                           >
+                            <AssetLogo
+                              ticker={tx.ticker}
+                              assetType={tx.assetType}
+                            />
                             {tx.ticker}
                           </Link>
                         </TableCell>

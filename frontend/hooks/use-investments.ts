@@ -3,8 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createInvestmentTransaction,
+  createInvestmentTransactionsBulk,
   deleteInvestmentTransaction,
   updateInvestmentTransaction,
+  type BulkCreateResult,
 } from "@/actions/investments";
 import {
   collectFixedTerm,
@@ -54,6 +56,19 @@ export function useCreateInvestment() {
   return useMutation({
     mutationFn: (input: InvestmentTransactionInput) =>
       createInvestmentTransaction(input).then(unwrap),
+    onSuccess: invalidate,
+  });
+}
+
+export function useBulkCreateInvestments() {
+  const invalidate = useInvalidateInvestments();
+  return useMutation({
+    mutationFn: async (inputs: InvestmentTransactionInput[]) => {
+      const result: BulkCreateResult =
+        await createInvestmentTransactionsBulk(inputs);
+      if (!result.ok) throw new Error(result.error);
+      return result;
+    },
     onSuccess: invalidate,
   });
 }

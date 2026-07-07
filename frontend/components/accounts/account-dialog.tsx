@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -62,7 +61,8 @@ function ProviderOption({ providerId }: { providerId: string }) {
   if (!provider) return null;
   return (
     <span className="inline-flex items-center gap-2">
-      <Image
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
         src={provider.logo}
         alt=""
         width={16}

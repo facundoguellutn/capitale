@@ -14,6 +14,7 @@ import {
   ASSET_TYPE_LABELS,
   CURRENCIES,
   TRANSACTION_SIDES,
+  isPer100,
 } from "@/lib/constants";
 import type {
   AssetSearchResult,
@@ -230,7 +231,7 @@ export function InvestmentDialog({
           <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-2">
               <Label htmlFor="inv-quantity">
-                {assetType === "bono" ? "Nominales" : "Cantidad"}
+                {isPer100(assetType) ? "Nominales" : "Cantidad"}
               </Label>
               <Input
                 id="inv-quantity"
@@ -245,7 +246,7 @@ export function InvestmentDialog({
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="inv-price">
-                {assetType === "bono" ? "Precio (por 100)" : "Precio unitario"}
+                {isPer100(assetType) ? "Precio (por 100)" : "Precio unitario"}
               </Label>
               <Input
                 id="inv-price"
