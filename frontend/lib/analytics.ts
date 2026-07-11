@@ -240,6 +240,62 @@ export function buildPositionSeries(
   return points;
 }
 
+export type AggregatedPoint = { time: number; invested: number; value: number };
+
+// Suma varias series de posición en una sola serie de cartera. Cada serie
+// debe venir ya expresada en la misma moneda (el caller convierte antes).
+// Alinea los puntos al inicio de día UTC y hace forward-fill: en cada día de
+// la unión, cada serie aporta su último punto conocido <= ese día. Una serie
+// no aporta antes de su primer punto y mantiene su último valor hacia
+// adelante (cubre feriados y velas de baja cadencia como las de cripto).
+export function aggregatePositionSeries(
+  seriesList: PositionPoint[][]
+): AggregatedPoint[] {
+  // Un punto por día (el último del día gana, series ascendentes)
+  const normalized = seriesList.map((series) => {
+    const byDay = new Map<number, PositionPoint>();
+    for (const p of series) byDay.set(p.time - (p.time % DAY), p);
+    return [...byDay.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([time, p]) => ({ time, invested: p.invested, value: p.value }));
+  });
+
+  const days = new Set<number>();
+  for (const series of normalized) for (const p of series) days.add(p.time);
+  const sortedDays = [...days].sort((a, b) => a - b);
+  if (sortedDays.length === 0) return [];
+
+  // Cursor por serie para el forward-fill
+  const cursors = normalized.map(() => ({
+    index: 0,
+    invested: 0,
+    value: 0,
+    active: false,
+  }));
+
+  const out: AggregatedPoint[] = [];
+  for (const day of sortedDays) {
+    let invested = 0;
+    let value = 0;
+    for (let i = 0; i < normalized.length; i++) {
+      const series = normalized[i];
+      const cur = cursors[i];
+      while (cur.index < series.length && series[cur.index].time <= day) {
+        cur.invested = series[cur.index].invested;
+        cur.value = series[cur.index].value;
+        cur.active = true;
+        cur.index++;
+      }
+      if (cur.active) {
+        invested += cur.invested;
+        value += cur.value;
+      }
+    }
+    out.push({ time: day, invested, value });
+  }
+  return out;
+}
+
 export type RealizedResult = {
   // Resultado realizado acumulado de todas las ventas, en la moneda de las
   // transacciones (las fees de compra ya están capitalizadas en el costo)

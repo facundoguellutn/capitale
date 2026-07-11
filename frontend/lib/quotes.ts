@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   ASSET_TYPES,
+  bondTickerCandidates,
   FX_CASA,
   type AssetType,
   type Currency,
@@ -286,13 +287,23 @@ export async function getAssetHistory(
   }
 
   const path = BYMA_HISTORY_PATH[assetType];
-  const res = await fetch(
-    `https://data912.com/historical/${path}/${encodeURIComponent(ticker.toUpperCase())}`,
-    { next: { revalidate: 3600, tags: ["asset-history"] } }
-  );
-  if (!res.ok) throw new Error(`data912 historical respondió ${res.status}`);
-  const data: Data912Bar[] = await res.json();
-  const candles: AssetCandle[] = data
+  const requestedTicker = ticker.toUpperCase();
+  const candidates = assetType === "bono" ? bondTickerCandidates(ticker) : [requestedTicker];
+  let resolvedTicker = requestedTicker;
+  let candles: AssetCandle[] = [];
+
+  for (const candidate of candidates) {
+    const res = await fetch(
+      `https://data912.com/historical/${path}/${encodeURIComponent(candidate)}`,
+      { next: { revalidate: 3600, tags: ["asset-history"] } }
+    );
+    if (!res.ok) {
+      if (candidate === candidates[candidates.length - 1])
+        throw new Error(`data912 historical respondió ${res.status}`);
+      continue;
+    }
+    const data: Data912Bar[] = await res.json();
+    candles = data
     .filter(
       (bar) =>
         bar.date != null &&
@@ -310,5 +321,18 @@ export async function getAssetHistory(
       volume: bar.v ?? undefined,
     }))
     .sort((a, b) => a.time - b.time);
-  return { ticker, currency: "ARS", candles };
+    if (candles.length > 0) {
+      resolvedTicker = candidate;
+      break;
+    }
+  }
+  return {
+    ticker: requestedTicker,
+    requestedTicker,
+    resolvedTicker,
+    currency: "ARS",
+    candles,
+    status: candles.length > 0 ? "available" : "empty",
+    fallbackUsed: resolvedTicker !== requestedTicker,
+  };
 }

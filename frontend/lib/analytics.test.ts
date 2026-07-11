@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregatePositionSeries,
   annualizedVolatility,
   bestWorstDay,
   buildPositionSeries,
@@ -12,6 +13,7 @@ import {
   sma,
   snapToCandleTime,
   type AnalyticsTransaction,
+  type PositionPoint,
 } from "@/lib/analytics";
 import type { AssetCandle } from "@/lib/types";
 
@@ -191,6 +193,63 @@ describe("buildPositionSeries", () => {
     const series = buildPositionSeries(txs, candles, "accion");
     expect(series[1]).toMatchObject({ quantity: 0, invested: 0, value: 0 });
     expect(series[2]).toMatchObject({ quantity: 0, invested: 0, value: 0 });
+  });
+});
+
+describe("aggregatePositionSeries", () => {
+  function point(day: number, invested: number, value: number): PositionPoint {
+    return { time: T0 + day * DAY, quantity: 0, invested, value };
+  }
+
+  it("suma series con fechas idénticas", () => {
+    const a = [point(0, 100, 120), point(1, 100, 130)];
+    const b = [point(0, 50, 60), point(1, 50, 55)];
+    expect(aggregatePositionSeries([a, b])).toEqual([
+      { time: T0, invested: 150, value: 180 },
+      { time: T0 + DAY, invested: 150, value: 185 },
+    ]);
+  });
+
+  it("hace forward-fill de la serie con días faltantes", () => {
+    const a = [point(0, 100, 100), point(1, 100, 110), point(2, 100, 120)];
+    const b = [point(0, 50, 50), point(2, 50, 70)]; // sin día 1
+    const result = aggregatePositionSeries([a, b]);
+    // Día 1: b mantiene su último valor conocido (día 0)
+    expect(result[1]).toEqual({ time: T0 + DAY, invested: 150, value: 160 });
+    expect(result[2]).toEqual({ time: T0 + 2 * DAY, invested: 150, value: 190 });
+  });
+
+  it("no cuenta una serie antes de su primer punto", () => {
+    const a = [point(0, 100, 100), point(1, 100, 110)];
+    const b = [point(1, 50, 50)]; // arranca el día 1
+    const result = aggregatePositionSeries([a, b]);
+    expect(result[0]).toEqual({ time: T0, invested: 100, value: 100 });
+    expect(result[1]).toEqual({ time: T0 + DAY, invested: 150, value: 160 });
+  });
+
+  it("mantiene en cero una posición cerrada hacia adelante", () => {
+    const a = [point(0, 100, 100), point(1, 0, 0)]; // vendida el día 1
+    const b = [point(0, 50, 50), point(1, 50, 60), point(2, 50, 70)];
+    const result = aggregatePositionSeries([a, b]);
+    expect(result[1]).toEqual({ time: T0 + DAY, invested: 50, value: 60 });
+    expect(result[2]).toEqual({ time: T0 + 2 * DAY, invested: 50, value: 70 });
+  });
+
+  it("normaliza timestamps intradía al inicio de día UTC", () => {
+    const a: PositionPoint[] = [
+      { time: T0 + 3600, quantity: 0, invested: 100, value: 100 },
+    ];
+    const b: PositionPoint[] = [
+      { time: T0 + 7200, quantity: 0, invested: 50, value: 60 },
+    ];
+    expect(aggregatePositionSeries([a, b])).toEqual([
+      { time: T0, invested: 150, value: 160 },
+    ]);
+  });
+
+  it("devuelve vacío sin series o con series vacías", () => {
+    expect(aggregatePositionSeries([])).toEqual([]);
+    expect(aggregatePositionSeries([[], []])).toEqual([]);
   });
 });
 

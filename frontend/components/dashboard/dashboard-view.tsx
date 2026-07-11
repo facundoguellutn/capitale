@@ -3,8 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -13,10 +11,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  EXPENSE_CATEGORY_LABELS,
-  type ExpenseCategory,
-} from "@/lib/constants";
 import { currentMonth, monthLabel } from "@/lib/month";
 import { cn, formatMoney, formatPercent } from "@/lib/utils";
 import { convertAmount, formatMoneyIn } from "@/lib/fx";
@@ -25,10 +19,10 @@ import { useDashboard } from "@/hooks/use-dashboard";
 import { PageHeader } from "@/components/page-header";
 import { MonthPicker } from "@/components/month-picker";
 import { AssetLogo } from "@/components/asset-logo";
-import {
-  MarketMovers,
-  PortfolioMovers,
-} from "@/components/dashboard/movers-cards";
+import { StatCard } from "@/components/stat-card";
+import { PortfolioEvolution } from "@/components/dashboard/portfolio-evolution";
+import { NetWorthChart } from "@/components/dashboard/net-worth-chart";
+import { PortfolioMovers } from "@/components/dashboard/movers-cards";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -69,10 +63,6 @@ const flowConfig = {
   expenseARS: { label: "Gastos", color: "var(--chart-6)" },
 } satisfies ChartConfig;
 
-const expensesConfig = {
-  totalARS: { label: "Gasto", color: "var(--chart-1)" },
-} satisfies ChartConfig;
-
 const compactARS = new Intl.NumberFormat("es-AR", {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -80,7 +70,7 @@ const compactARS = new Intl.NumberFormat("es-AR", {
 
 export function DashboardView() {
   const [month, setMonth] = useState(currentMonth());
-  const { data, isPending, isError } = useDashboard(month);
+  const { data, isPending, isError } = useDashboard();
   const { displayCurrency } = useDisplayCurrency();
 
   if (isPending) {
@@ -104,14 +94,35 @@ export function DashboardView() {
     );
   }
 
+  const mep = data.mep;
+
+  // Monto con signo en la moneda de display (para resultados y variaciones)
+  const signedMoney = (ars: number) => {
+    const s = formatMoneyIn(ars, "ARS", displayCurrency, mep);
+    return ars > 0 ? `+${s}` : s;
+  };
+  const toneOf = (n: number) =>
+    n > 0 ? "positive" : n < 0 ? "negative" : "neutral";
+
+  const kpis = data.portfolioKpis;
+
+  // Ahorro del mes elegido (ingresos − gastos); "—" si está fuera de los 12 meses
+  const monthEntry = data.monthlyFlow.find((f) => f.month === month);
+  const savingsARS = monthEntry
+    ? monthEntry.incomeARS - monthEntry.expenseARS
+    : null;
+  const savingsRate =
+    monthEntry && monthEntry.incomeARS > 0
+      ? savingsARS! / monthEntry.incomeARS
+      : null;
+
   // Valores del pie convertidos a la moneda de display (fallback a ARS sin MEP)
   const pieCurrency: "ARS" | "USD" =
-    displayCurrency === "USD" && data.mep != null ? "USD" : "ARS";
+    displayCurrency === "USD" && mep != null ? "USD" : "ARS";
   const assetTypeData = data.byAssetType.map((entry, i) => ({
     ...entry,
     valueARS:
-      convertAmount(entry.valueARS, "ARS", pieCurrency, data.mep) ??
-      entry.valueARS,
+      convertAmount(entry.valueARS, "ARS", pieCurrency, mep) ?? entry.valueARS,
     fill: SLICE_COLORS[i % SLICE_COLORS.length],
   }));
   const assetTypeConfig = Object.fromEntries(
@@ -121,15 +132,12 @@ export function DashboardView() {
     ])
   ) satisfies ChartConfig;
 
-  const expensesData = data.expensesByCategory.map((entry) => ({
-    ...entry,
-    label: EXPENSE_CATEGORY_LABELS[entry.category as ExpenseCategory],
-  }));
-
   const flowData = data.monthlyFlow.map((entry) => ({
     ...entry,
     label: monthLabel(entry.month).slice(0, 3),
   }));
+
+  const accountTotal = data.byAccount.reduce((s, a) => s + a.valueARS, 0);
 
   return (
     <div>
@@ -144,7 +152,7 @@ export function DashboardView() {
               Patrimonio total
             </p>
             <p className="mt-1.5 font-heading text-5xl font-medium tracking-tight tabular-nums">
-              {displayCurrency === "USD" && data.mep != null
+              {displayCurrency === "USD" && mep != null
                 ? formatMoney(data.totalUSD, "USD")
                 : formatMoney(data.totalARS, "ARS")}
             </p>
@@ -152,12 +160,12 @@ export function DashboardView() {
           <dl className="flex divide-x divide-border">
             <div className="pr-8">
               <dt className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {displayCurrency === "USD" && data.mep != null
+                {displayCurrency === "USD" && mep != null
                   ? "En pesos"
                   : "En dólares (MEP)"}
               </dt>
               <dd className="mt-1 font-mono text-lg tabular-nums">
-                {displayCurrency === "USD" && data.mep != null
+                {displayCurrency === "USD" && mep != null
                   ? formatMoney(data.totalARS, "ARS")
                   : formatMoney(data.totalUSD, "USD")}
               </dd>
@@ -167,145 +175,49 @@ export function DashboardView() {
                 Dólar MEP
               </dt>
               <dd className="mt-1 font-mono text-lg tabular-nums text-brass">
-                {data.mep != null ? formatMoney(data.mep, "ARS") : "—"}
+                {mep != null ? formatMoney(mep, "ARS") : "—"}
               </dd>
             </div>
           </dl>
         </div>
       </section>
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribución por tipo de activo</CardTitle>
-            <CardDescription>
-              Valuado en {pieCurrency === "ARS" ? "pesos" : "dólares"} al MEP
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {assetTypeData.length > 0 ? (
-              <ChartContainer config={assetTypeConfig} className="mx-auto h-64 w-full">
-                <PieChart>
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value, name) => (
-                          <span>
-                            {name}: {formatMoney(Number(value), pieCurrency)}
-                          </span>
-                        )}
-                      />
-                    }
-                  />
-                  <Pie
-                    data={assetTypeData}
-                    dataKey="valueARS"
-                    nameKey="name"
-                    innerRadius={55}
-                    strokeWidth={2}
-                    stroke="var(--card)"
-                  />
-                  <ChartLegend content={<ChartLegendContent nameKey="name" />} />
-                </PieChart>
-              </ChartContainer>
-            ) : (
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                Cargá cuentas e inversiones para ver la distribución.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribución por cuenta</CardTitle>
-            <CardDescription>Saldos de efectivo por banco/app</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.byAccount.length > 0 ? (
-              <div className="flex flex-col gap-3">
-                {data.byAccount.map((account) => {
-                  const total = data.byAccount.reduce((s, a) => s + a.valueARS, 0);
-                  const share = total > 0 ? account.valueARS / total : 0;
-                  return (
-                    <div key={account.name}>
-                      <div className="mb-1 flex items-center justify-between text-sm">
-                        <span className="font-medium">{account.name}</span>
-                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                          {formatMoneyIn(
-                            account.valueARS,
-                            "ARS",
-                            displayCurrency,
-                            data.mep
-                          )}{" "}
-                          · {formatPercent(share).replace("+", "")}
-                        </span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-[var(--chart-1)]"
-                          style={{ width: `${Math.max(2, share * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                Sin cuentas con saldo.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Valor de cartera"
+          value={formatMoneyIn(kpis.valueARS, "ARS", displayCurrency, mep)}
+          sub={`Invertido: ${formatMoneyIn(kpis.investedARS, "ARS", displayCurrency, mep)}`}
+        />
+        <StatCard
+          label="Resultado total"
+          value={signedMoney(kpis.pnlARS)}
+          tone={toneOf(kpis.pnlARS)}
+          sub={kpis.pnlPct != null ? formatPercent(kpis.pnlPct) : undefined}
+        />
+        <StatCard
+          label="Variación hoy"
+          value={signedMoney(kpis.dayChangeARS)}
+          tone={toneOf(kpis.dayChangeARS)}
+          sub={
+            kpis.dayChangePct != null ? formatPercent(kpis.dayChangePct) : undefined
+          }
+        />
+        <StatCard
+          label={`Ahorro de ${monthLabel(month)}`}
+          value={savingsARS != null ? signedMoney(savingsARS) : "—"}
+          tone={savingsARS != null ? toneOf(savingsARS) : "neutral"}
+          sub={
+            savingsRate != null
+              ? `Tasa de ahorro: ${formatPercent(savingsRate)}`
+              : undefined
+          }
+        />
       </div>
 
+      <PortfolioEvolution />
+
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Gastos por categoría</CardTitle>
-            <CardDescription>{monthLabel(month)} · en pesos al MEP</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {expensesData.length > 0 ? (
-              <ChartContainer config={expensesConfig} className="h-64 w-full">
-                <BarChart data={expensesData} layout="vertical" margin={{ left: 12 }}>
-                  <CartesianGrid horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tickFormatter={(v) => compactARS.format(v)}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="label"
-                    width={110}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value) => formatMoney(Number(value), "ARS")}
-                      />
-                    }
-                  />
-                  <Bar
-                    dataKey="totalARS"
-                    fill="var(--chart-1)"
-                    radius={[0, 4, 4, 0]}
-                    maxBarSize={18}
-                  />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                No hay gastos en {monthLabel(month)}.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        <NetWorthChart snapshots={data.snapshots} mep={mep} />
 
         <Card>
           <CardHeader>
@@ -357,8 +269,116 @@ export function DashboardView() {
       </div>
 
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
-        <PortfolioMovers holdings={data.holdings} mep={data.mep} />
-        <MarketMovers />
+        <Card>
+          <CardHeader>
+            <CardTitle>Distribución por cuenta</CardTitle>
+            <CardDescription>Efectivo + inversiones por cuenta</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {data.byAccount.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                {data.byAccount.map((account) => {
+                  const share =
+                    accountTotal > 0 ? account.valueARS / accountTotal : 0;
+                  const hasBoth =
+                    account.cashARS > 0 && account.investmentsARS > 0;
+                  return (
+                    <div key={account.name}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="font-medium">{account.name}</span>
+                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                          {formatMoneyIn(
+                            account.valueARS,
+                            "ARS",
+                            displayCurrency,
+                            mep
+                          )}{" "}
+                          · {formatPercent(share).replace("+", "")}
+                        </span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-[var(--chart-1)]"
+                          style={{ width: `${Math.max(2, share * 100)}%` }}
+                        />
+                      </div>
+                      {hasBoth && (
+                        <p className="mt-1 font-mono text-[11px] tabular-nums text-muted-foreground">
+                          Efectivo{" "}
+                          {formatMoneyIn(
+                            account.cashARS,
+                            "ARS",
+                            displayCurrency,
+                            mep
+                          )}{" "}
+                          · Inversiones{" "}
+                          {formatMoneyIn(
+                            account.investmentsARS,
+                            "ARS",
+                            displayCurrency,
+                            mep
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="py-12 text-center text-sm text-muted-foreground">
+                Sin cuentas con saldo.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Distribución por tipo de activo</CardTitle>
+            <CardDescription>
+              Valuado en {pieCurrency === "ARS" ? "pesos" : "dólares"} al MEP
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {assetTypeData.length > 0 ? (
+              <ChartContainer
+                config={assetTypeConfig}
+                className="mx-auto h-64 w-full"
+              >
+                <PieChart>
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value, name) => (
+                          <span>
+                            {name}: {formatMoney(Number(value), pieCurrency)}
+                          </span>
+                        )}
+                      />
+                    }
+                  />
+                  <Pie
+                    data={assetTypeData}
+                    dataKey="valueARS"
+                    nameKey="name"
+                    innerRadius={55}
+                    strokeWidth={2}
+                    stroke="var(--card)"
+                  />
+                  <ChartLegend content={<ChartLegendContent nameKey="name" />} />
+                </PieChart>
+              </ChartContainer>
+            ) : (
+              <p className="py-12 text-center text-sm text-muted-foreground">
+                Cargá cuentas e inversiones para ver la distribución.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mb-4">
+        <PortfolioMovers holdings={data.holdings} mep={mep} />
       </div>
 
       <Card>
@@ -398,7 +418,7 @@ export function DashboardView() {
                         holding.costBasis,
                         holding.currency,
                         displayCurrency,
-                        data.mep
+                        mep
                       )}
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
@@ -444,7 +464,7 @@ export function DashboardView() {
                               holding.pnl,
                               "ARS",
                               displayCurrency,
-                              data.mep
+                              mep
                             );
                             return converted != null
                               ? formatMoney(converted, displayCurrency)

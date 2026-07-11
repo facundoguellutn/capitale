@@ -7,4 +7,5 @@ export const qk = {
   quotes: ["quotes"] as const,
   markets: (type: string) => ["markets", type] as const,
   dashboard: ["dashboard"] as const,
+  portfolioHistory: ["portfolio-history"] as const,
 };

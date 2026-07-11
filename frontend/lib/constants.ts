@@ -32,6 +32,7 @@ export const ACCOUNT_PROVIDERS: AccountProvider[] = [
   { id: "brubank", name: "Brubank", logo: "/logos/brubank.jpg", type: "banco" },
   { id: "naranjax", name: "Naranja X", logo: "/logos/naranjax.jpg", type: "billetera" },
   { id: "mercadopago", name: "Mercado Pago", logo: "/logos/mercado.png", type: "billetera" },
+  { id: "takenos", name: "Takenos", logo: "/logos/takenos.png", type: "billetera" },
 ];
 
 export const ACCOUNT_PROVIDER_IDS = ACCOUNT_PROVIDERS.map((p) => p.id);
@@ -105,6 +106,37 @@ export const PER_100_ASSET_TYPES: readonly AssetType[] = ["bono", "letra", "on"]
 
 export function isPer100(assetType: AssetType): boolean {
   return PER_100_ASSET_TYPES.includes(assetType);
+}
+
+// Los bonos soberanos cotizan y liquidan en tres puntas que son la MISMA
+// especie: pesos (GD30), dólar MEP (GD30D) y cable (GD30C). Se unifican al
+// ticker base para que una operación de dólar MEP (compra en pesos + venta en
+// dólares del mismo bono) se netee en una sola posición en vez de quedar como
+// dos tickers distintos que inflan la cartera.
+// Nota: solo aplica a bonos. Las ONs usan otra convención de sufijos (YMCJO
+// peso / YMCJD dólar, con base distinta) y no se normalizan acá.
+export function canonicalTicker(ticker: string, assetType: AssetType): string {
+  const t = ticker.toUpperCase();
+  if (assetType === "bono" && /[DC]$/.test(t)) return t.slice(0, -1);
+  return t;
+}
+
+// Todas las puntas de negociación de un bono representan el mismo instrumento.
+// Se usa tanto al valuar como al vincular operaciones con su ficha de detalle.
+export function sameInstrument(
+  left: string,
+  right: string,
+  assetType: AssetType
+): boolean {
+  return canonicalTicker(left, assetType) === canonicalTicker(right, assetType);
+}
+
+// Orden de preferencia para históricos. La punta en pesos suele tener mayor
+// cobertura; nunca se cambia silenciosamente la moneda de la serie solicitada.
+export function bondTickerCandidates(ticker: string): string[] {
+  const requested = ticker.toUpperCase();
+  const base = canonicalTicker(requested, "bono");
+  return [...new Set([requested, base])];
 }
 
 export const TRANSACTION_SIDES = ["compra", "venta"] as const;

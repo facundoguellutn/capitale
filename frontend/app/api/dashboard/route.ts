@@ -1,19 +1,20 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { dbConnect } from "@/lib/db";
-import {
-  ASSET_TYPE_LABELS,
-  type AssetType,
-  type Currency,
-  type ExpenseCategory,
-} from "@/lib/constants";
-import { currentMonth, lastMonths, monthRange } from "@/lib/month";
+import { ASSET_TYPE_LABELS, type AssetType, type Currency } from "@/lib/constants";
+import { lastMonths, monthRange } from "@/lib/month";
 import {
   computeHoldings,
   fixedTermAccruedValue,
   valueHoldings,
+  type PortfolioTransaction,
 } from "@/lib/portfolio";
-import { getDolarRates, getMepRate, getQuotes } from "@/lib/quotes";
+import {
+  getDolarRates,
+  getMepRate,
+  getQuotes,
+  type QuoteRequest,
+} from "@/lib/quotes";
 import type { DashboardData } from "@/lib/types";
 import Account from "@/models/Account";
 import Expense from "@/models/Expense";
@@ -26,20 +27,20 @@ function toARS(amount: number, currency: Currency, mep: number | null) {
   return currency === "ARS" ? amount : mep != null ? amount * mep : 0;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const session = await getSession();
   if (!session?.userId) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
   await dbConnect();
-  const month = request.nextUrl.searchParams.get("month") ?? currentMonth();
 
   const [accounts, txDocs, fixedTerms] = await Promise.all([
-    Account.find({ archived: false }).lean(),
+    Account.find().lean(),
     InvestmentTransaction.find().lean(),
     FixedTermDeposit.find({ status: "activo" }).lean(),
   ]);
+  const activeAccounts = accounts.filter((a) => !a.archived);
 
   let mep: number | null = null;
   try {
@@ -48,30 +49,49 @@ export async function GET(request: NextRequest) {
     console.error("Error obteniendo dólares:", err);
   }
 
-  const bare = computeHoldings(
-    txDocs.map((d) => ({
-      assetType: d.assetType,
-      ticker: d.ticker,
-      coingeckoId: d.coingeckoId,
-      side: d.side,
-      quantity: d.quantity,
-      price: d.price,
-      currency: d.currency,
-      date: d.date,
-      fee: d.fee,
-    }))
-  );
-  const quotes = await getQuotes(
-    bare.map((h) => ({
+  const toPortfolioTx = (d: (typeof txDocs)[number]): PortfolioTransaction => ({
+    assetType: d.assetType,
+    ticker: d.ticker,
+    coingeckoId: d.coingeckoId,
+    side: d.side,
+    quantity: d.quantity,
+    price: d.price,
+    currency: d.currency,
+    date: d.date,
+    fee: d.fee,
+  });
+
+  // Posiciones globales
+  const bare = computeHoldings(txDocs.map(toPortfolioTx));
+
+  // Posiciones por cuenta (para la distribución por cuenta con inversiones)
+  const txByAccount = new Map<string, PortfolioTransaction[]>();
+  for (const d of txDocs) {
+    const accId = String(d.accountId);
+    const list = txByAccount.get(accId) ?? [];
+    list.push(toPortfolioTx(d));
+    txByAccount.set(accId, list);
+  }
+  const holdingsByAccount = new Map<string, ReturnType<typeof computeHoldings>>();
+  for (const [accId, txs] of txByAccount) {
+    holdingsByAccount.set(accId, computeHoldings(txs));
+  }
+
+  // Cotizaciones para la unión de tickers (globales + por cuenta): un ticker
+  // puede quedar en 0 global pero positivo en una cuenta puntual
+  const quoteReqs = new Map<string, QuoteRequest>();
+  for (const h of [bare, ...holdingsByAccount.values()].flat()) {
+    quoteReqs.set(h.ticker, {
       ticker: h.ticker,
       assetType: h.assetType,
       coingeckoId: h.coingeckoId,
-    }))
-  );
+    });
+  }
+  const quotes = await getQuotes([...quoteReqs.values()]);
   const holdings = valueHoldings(bare, quotes, mep);
 
   // --- Totales ---
-  const cashARS = accounts.reduce(
+  const cashARS = activeAccounts.reduce(
     (sum, a) => sum + toARS(a.balance, a.currency, mep),
     0
   );
@@ -89,6 +109,31 @@ export async function GET(request: NextRequest) {
   const totalARS = cashARS + investmentsARS + fixedTermsARS;
   const totalUSD = mep != null && mep > 0 ? totalARS / mep : 0;
 
+  // --- KPIs de cartera (desde los holdings ya valuados) ---
+  const investedARS = holdings.reduce(
+    (sum, h) => sum + toARS(h.costBasis, h.currency, mep),
+    0
+  );
+  const pnlARS = holdings.reduce((sum, h) => sum + (h.pnl ?? 0), 0);
+  // Valor de la cartera ayer, para la variación de hoy en $
+  const prevValueARS = holdings.reduce((sum, h) => {
+    if (h.valueARS == null || h.pctChange == null) return sum;
+    return sum + h.valueARS / (1 + h.pctChange / 100);
+  }, 0);
+  const dayChangeARS = holdings.reduce((sum, h) => {
+    if (h.valueARS == null || h.pctChange == null) return sum;
+    return sum + (h.valueARS - h.valueARS / (1 + h.pctChange / 100));
+  }, 0);
+
+  const portfolioKpis: DashboardData["portfolioKpis"] = {
+    investedARS,
+    valueARS: investmentsARS,
+    pnlARS,
+    pnlPct: investedARS > 0 ? pnlARS / investedARS : null,
+    dayChangeARS,
+    dayChangePct: prevValueARS > 0 ? dayChangeARS / prevValueARS : null,
+  };
+
   // --- Distribución por tipo de activo ---
   const byType = new Map<string, number>();
   if (cashARS > 0) byType.set("Efectivo y cuentas", cashARS);
@@ -99,31 +144,35 @@ export async function GET(request: NextRequest) {
   }
   if (fixedTermsARS > 0) byType.set("Plazos fijos", fixedTermsARS);
 
-  // --- Distribución por cuenta ---
-  const byAccount = accounts
-    .map((a) => ({ name: a.name, valueARS: toARS(a.balance, a.currency, mep) }))
+  // --- Distribución por cuenta (efectivo + inversiones operadas desde ella) ---
+  const byAccount = accounts.map((a) => {
+    const cash = a.archived ? 0 : toARS(a.balance, a.currency, mep);
+    const accHoldings = holdingsByAccount.get(String(a._id));
+    const investments = accHoldings
+      ? valueHoldings(accHoldings, quotes, mep).reduce(
+          (sum, h) => sum + (h.valueARS ?? 0),
+          0
+        )
+      : 0;
+    return {
+      name: a.name,
+      cashARS: cash,
+      investmentsARS: investments,
+      valueARS: cash + investments,
+    };
+  });
+  // Los plazos fijos no tienen cuenta asociada: fila propia
+  if (fixedTermsARS > 0) {
+    byAccount.push({
+      name: "Plazos fijos",
+      cashARS: 0,
+      investmentsARS: fixedTermsARS,
+      valueARS: fixedTermsARS,
+    });
+  }
+  const byAccountSorted = byAccount
     .filter((a) => a.valueARS > 0)
     .sort((a, b) => b.valueARS - a.valueARS);
-
-  // --- Gastos por categoría (mes elegido) ---
-  const { start, end } = monthRange(month);
-  const expensesByCategoryRaw = await Expense.aggregate<{
-    _id: { category: string; currency: Currency };
-    total: number;
-  }>([
-    { $match: { date: { $gte: start, $lt: end } } },
-    {
-      $group: {
-        _id: { category: "$category", currency: "$currency" },
-        total: { $sum: "$amount" },
-      },
-    },
-  ]);
-  const byCategory = new Map<string, number>();
-  for (const row of expensesByCategoryRaw) {
-    const ars = toARS(row.total, row._id.currency, mep);
-    byCategory.set(row._id.category, (byCategory.get(row._id.category) ?? 0) + ars);
-  }
 
   // --- Flujo mensual: ingresos vs gastos últimos 12 meses ---
   const months = lastMonths(12).reverse();
@@ -177,10 +226,12 @@ export async function GET(request: NextRequest) {
       { upsert: true }
     );
   }
+  // Los 365 más recientes, en orden ascendente para graficar
   const snapshotDocs = await NetWorthSnapshot.find()
-    .sort({ date: 1 })
+    .sort({ date: -1 })
     .limit(365)
     .lean();
+  snapshotDocs.reverse();
 
   const body: DashboardData = {
     totalARS,
@@ -189,14 +240,9 @@ export async function GET(request: NextRequest) {
     byAssetType: [...byType.entries()]
       .map(([name, valueARS]) => ({ name, valueARS }))
       .sort((a, b) => b.valueARS - a.valueARS),
-    byAccount,
+    byAccount: byAccountSorted,
     holdings,
-    expensesByCategory: [...byCategory.entries()]
-      .map(([category, totalARS]) => ({
-        category: category as ExpenseCategory,
-        totalARS,
-      }))
-      .sort((a, b) => b.totalARS - a.totalARS),
+    portfolioKpis,
     monthlyFlow,
     snapshots: snapshotDocs.map((s) => ({
       date: new Date(s.date).toISOString().slice(0, 10),

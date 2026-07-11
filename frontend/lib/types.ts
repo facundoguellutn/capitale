@@ -108,6 +108,24 @@ export type AssetHistoryResponse = {
   ticker: string;
   currency: Currency;
   candles: AssetCandle[];
+  requestedTicker?: string;
+  resolvedTicker?: string;
+  status?: "available" | "empty" | "unsupported";
+  fallbackUsed?: boolean;
+};
+
+export type InflationPoint = { time: number; value: number };
+export type InflationResponse = {
+  ars: InflationPoint[];
+  usd: InflationPoint[];
+  updatedAt: string;
+};
+
+export type FxHistoryPoint = { time: number; mep: number };
+export type FxHistoryResponse = {
+  points: FxHistoryPoint[];
+  source: string;
+  updatedAt: string;
 };
 
 // Cotización del panel completo de mercado (acciones/cedears/bonos)
@@ -156,9 +174,43 @@ export type DashboardData = {
   totalUSD: number;
   mep: number | null;
   byAssetType: { name: string; valueARS: number }[];
-  byAccount: { name: string; valueARS: number }[];
+  byAccount: {
+    name: string;
+    valueARS: number;
+    cashARS: number;
+    investmentsARS: number;
+  }[];
   holdings: Holding[];
-  expensesByCategory: { category: ExpenseCategory; totalARS: number }[];
+  portfolioKpis: {
+    investedARS: number;
+    valueARS: number;
+    pnlARS: number;
+    pnlPct: number | null;
+    dayChangeARS: number;
+    dayChangePct: number | null;
+  };
   monthlyFlow: { month: string; incomeARS: number; expenseARS: number }[];
   snapshots: { date: string; totalARS: number; totalUSD: number }[];
+};
+
+// Evolución diaria de la cartera de inversiones (valor de mercado vs capital
+// invertido), reconstruida de las operaciones y los históricos de precios.
+export type PortfolioHistoryPoint = {
+  time: number;
+  investedARS: number;
+  valueARS: number;
+};
+
+// Serie agregada de la cartera completa ("todos") o de un tipo de activo.
+// El cliente elige cuál mostrar sin volver a pedir datos.
+export type PortfolioHistorySeries = {
+  assetType: AssetType | "todos";
+  points: PortfolioHistoryPoint[];
+};
+
+export type PortfolioHistoryResponse = {
+  mep: number | null;
+  series: PortfolioHistorySeries[];
+  // Tickers sin histórico disponible que no entraron en la agregación
+  excludedTickers: string[];
 };

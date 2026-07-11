@@ -1,6 +1,11 @@
 import "server-only";
 
-import { isPer100, type AssetType, type Currency } from "@/lib/constants";
+import {
+  canonicalTicker,
+  isPer100,
+  type AssetType,
+  type Currency,
+} from "@/lib/constants";
 import { positionValue } from "@/lib/analytics";
 import type { Holding, Quote } from "@/lib/types";
 
@@ -39,7 +44,8 @@ export function computeHoldings(
   >();
 
   for (const tx of sorted) {
-    const key = tx.ticker.toUpperCase();
+    // Unifica las puntas peso/dólar/cable de un bono en una sola posición
+    const key = canonicalTicker(tx.ticker, tx.assetType);
     const pos = positions.get(key) ?? {
       ticker: key,
       assetType: tx.assetType,

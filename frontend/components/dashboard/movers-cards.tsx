@@ -4,10 +4,9 @@ import Link from "next/link";
 import { cn, formatPercent } from "@/lib/utils";
 import { formatMoneyIn } from "@/lib/fx";
 import type { AssetType } from "@/lib/constants";
-import type { Holding, MarketQuote } from "@/lib/types";
+import type { Holding } from "@/lib/types";
 import { AssetLogo } from "@/components/asset-logo";
 import { useDisplayCurrency } from "@/components/display-currency";
-import { useMarkets, type MarketType } from "@/hooks/use-markets";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -16,7 +15,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 
 function assetHref(ticker: string, type: string, coingeckoId?: string) {
   return (
@@ -140,83 +138,6 @@ export function PortfolioMovers({
             Cuando tengas inversiones con cotización, acá vas a ver cuáles se
             movieron más hoy.
           </p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// Acciones y CEDEARs que más variaron hoy en todo el mercado
-export function MarketMovers() {
-  const acciones = useMarkets("accion");
-  const cedears = useMarkets("cedear");
-
-  const isPending = acciones.isPending || cedears.isPending;
-  const isError = acciones.isError && cedears.isError;
-  const mep = acciones.data?.mep ?? cedears.data?.mep ?? null;
-
-  const merged: (MarketQuote & { type: MarketType })[] = [
-    ...(acciones.data?.quotes ?? []).map((q) => ({ ...q, type: "accion" as const })),
-    ...(cedears.data?.quotes ?? []).map((q) => ({ ...q, type: "cedear" as const })),
-  ].sort((a, b) => b.pctChange - a.pctChange);
-
-  const gainers = merged.slice(0, 5);
-  const losers = merged.slice(-5).reverse();
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Movers del mercado</CardTitle>
-        <CardDescription>
-          Acciones y CEDEARs que más variaron hoy
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isPending ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-6 w-full" />
-          </div>
-        ) : isError ? (
-          <p className="py-8 text-center text-sm text-destructive">
-            Error al cargar los datos del mercado
-          </p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Subas
-              </p>
-              {gainers.map((q) => (
-                <MoverRow
-                  key={`${q.type}:${q.ticker}`}
-                  ticker={q.ticker}
-                  href={assetHref(q.ticker, q.type)}
-                  pctChange={q.pctChange}
-                  price={q.price}
-                  mep={mep}
-                  assetType={q.type}
-                />
-              ))}
-            </div>
-            <div>
-              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Bajas
-              </p>
-              {losers.map((q) => (
-                <MoverRow
-                  key={`${q.type}:${q.ticker}`}
-                  ticker={q.ticker}
-                  href={assetHref(q.ticker, q.type)}
-                  pctChange={q.pctChange}
-                  price={q.price}
-                  mep={mep}
-                  assetType={q.type}
-                />
-              ))}
-            </div>
-          </div>
         )}
       </CardContent>
     </Card>

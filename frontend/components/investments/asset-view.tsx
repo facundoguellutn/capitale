@@ -5,12 +5,14 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import {
   ASSET_TYPE_LABELS,
+  sameInstrument,
   type AssetType,
   type Currency,
 } from "@/lib/constants";
 import { cn, formatDate, formatMoney, formatPercent } from "@/lib/utils";
 import { convertAmount, formatMoneyIn } from "@/lib/fx";
 import { computeZones } from "@/lib/analytics";
+import { getFixedIncomeInstrument } from "@/lib/fixed-income";
 import type { AssetCandle } from "@/lib/types";
 import { useDisplayCurrency } from "@/components/display-currency";
 import { useInvestments } from "@/hooks/use-investments";
@@ -19,6 +21,8 @@ import { AssetChart, type TradeMarker } from "@/components/investments/asset-cha
 import { AssetMetrics } from "@/components/investments/asset-metrics";
 import { PositionEvolution } from "@/components/investments/position-evolution";
 import { PositionSimulator } from "@/components/investments/position-simulator";
+import { FixedIncomePanel } from "@/components/investments/fixed-income-panel";
+import { InflationComparison } from "@/components/investments/inflation-comparison";
 import { AssetLogo } from "@/components/asset-logo";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -116,10 +120,10 @@ export function AssetView({
 
   const transactions = useMemo(
     () =>
-      (data?.transactions ?? []).filter(
-        (tx) => tx.ticker.toUpperCase() === upper
+      (data?.transactions ?? []).filter((tx) =>
+        sameInstrument(tx.ticker, upper, initialType ?? tx.assetType)
       ),
-    [data, upper]
+    [data, upper, initialType]
   );
   const holding = data?.holdings.find((h) => h.ticker === upper);
 
@@ -133,6 +137,9 @@ export function AssetView({
   const historyCandles = history.data?.candles;
   const candles = useMemo(() => historyCandles ?? [], [historyCandles]);
   const priceCurrency: Currency = history.data?.currency ?? "ARS";
+  const fixedIncomeInstrument = assetType
+    ? getFixedIncomeInstrument(upper, assetType)
+    : null;
 
   const lastClose = candles.length > 0 ? candles[candles.length - 1].close : null;
   const currentPrice = holding?.currentPrice ?? lastClose;
@@ -250,6 +257,11 @@ export function AssetView({
             </p>
           ) : (
             <>
+              {history.data?.fallbackUsed && (
+                <div className="mb-3 rounded-md border border-brass/30 bg-brass/10 px-3 py-2 text-xs text-muted-foreground">
+                  La especie {history.data.requestedTicker} no tiene histórico propio. Se muestra la serie en ARS de {history.data.resolvedTicker}.
+                </div>
+              )}
               <AssetChart
                 candles={candles}
                 trades={trades}
@@ -267,6 +279,18 @@ export function AssetView({
           )}
         </CardContent>
       </Card>
+
+      {fixedIncomeInstrument && (
+        <FixedIncomePanel
+          instrument={fixedIncomeInstrument}
+          price={
+            currentPrice != null
+              ? convertAmount(currentPrice, priceCurrency, fixedIncomeInstrument.currency, mep)
+              : null
+          }
+          quantity={holding?.quantity ?? 100}
+        />
+      )}
 
       {holding && (
         <Card>
@@ -394,16 +418,19 @@ export function AssetView({
       )}
 
       {candles.length > 0 && (
-        <AssetMetrics
-          candles={candles}
-          assetType={assetType}
-          priceCurrency={priceCurrency}
-          currentPrice={currentPrice}
-          holding={holding}
-          allHoldings={data?.holdings ?? []}
-          transactions={transactions}
-          mep={mep}
-        />
+        <>
+          <InflationComparison candles={candles} currency={priceCurrency} instrument={fixedIncomeInstrument} />
+          <AssetMetrics
+            candles={candles}
+            assetType={assetType}
+            priceCurrency={priceCurrency}
+            currentPrice={currentPrice}
+            holding={holding}
+            allHoldings={data?.holdings ?? []}
+            transactions={transactions}
+            mep={mep}
+          />
+        </>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
