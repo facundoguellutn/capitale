@@ -159,6 +159,54 @@ export function extractTickerFromText(value: unknown): string {
     .toUpperCase();
 }
 
+// Cocos incluye el símbolo al final de la descripción del instrumento.
+// Se toma el último paréntesis porque el nombre puede contener otros antes.
+export function extractCocosTicker(value: unknown): string {
+  if (value == null) return "";
+  const matches = [...String(value).matchAll(/\(([^)]+)\)/g)];
+  return (matches.at(-1)?.[1] ?? "").trim().toUpperCase();
+}
+
+export function inferCocosAssetType(value: unknown): AssetType | null {
+  const instrument = normalizeHeader(String(value ?? ""));
+  if (instrument.startsWith("cedear")) return "cedear";
+  if (instrument.startsWith("letra")) return "letra";
+  if (instrument.startsWith("bono")) return "bono";
+  if (instrument.startsWith("obligacion negociable")) return "on";
+  if (instrument.startsWith("accion")) return "accion";
+  return null;
+}
+
+function cocosNumber(row: Record<string, unknown>, header: string): number {
+  return parseLocaleNumber(row[header]) ?? 0;
+}
+
+export function cocosFee(row: Record<string, unknown>): number {
+  return Math.abs(
+    cocosNumber(row, "comision") +
+      cocosNumber(row, "ddmm") +
+      cocosNumber(row, "iva") +
+      cocosNumber(row, "otros")
+  );
+}
+
+export function cocosReconciliationIssue(
+  row: Record<string, unknown>
+): string | null {
+  const gross = parseLocaleNumber(row.montoBruto);
+  const total = parseLocaleNumber(row.total);
+  if (gross == null || total == null) return null;
+  const expected =
+    gross +
+    cocosNumber(row, "comision") +
+    cocosNumber(row, "ddmm") +
+    cocosNumber(row, "iva") +
+    cocosNumber(row, "otros");
+  return Math.abs(expected - total) <= 0.02
+    ? null
+    : "El total no concilia con el bruto y los gastos";
+}
+
 export function normalizeAssetType(value: unknown): AssetType | null {
   if (value == null) return null;
   const s = normalizeHeader(String(value));
@@ -224,14 +272,18 @@ export function buildDrafts(
     let side = normalizeSide(sideRaw);
     // Sin columna de ticker (o vacía), intentar extraerlo del texto de la
     // operación (formato IOL: "Compra(GGAL)")
+    const instrument = get("ticker");
     const ticker =
-      String(get("ticker") ?? "").trim().toUpperCase() ||
+      (raw.format === "cocos"
+        ? extractCocosTicker(instrument)
+        : String(instrument ?? "").trim().toUpperCase()) ||
       extractTickerFromText(sideRaw);
     const quantity = parseLocaleNumber(get("quantity"));
     const price = parseLocaleNumber(get("price"));
     const date = parseFlexibleDate(get("date"));
     const currency = normalizeCurrency(get("currency"));
-    const fee = parseLocaleNumber(get("fee"));
+    const fee =
+      raw.format === "cocos" ? cocosFee(row) : parseLocaleNumber(get("fee"));
     let note = String(get("note") ?? "").trim() || undefined;
 
     if (side === null) {
@@ -246,13 +298,18 @@ export function buildDrafts(
         side = "compra";
         note = note ?? "Dividendo en acciones";
       } else {
+        const exclusionReason =
+          raw.format === "cocos" &&
+          /suscripcion|rescate.*fci/i.test(String(sideRaw ?? ""))
+            ? "FCI todavía no soportado"
+            : "No es una compra/venta";
         // No es compra/venta (dividendo en efectivo, depósito, etc.):
         // se excluye pero se muestra
         drafts.push({
           index: i + 2, // +2: base 1 más la fila de headers
           values: { ticker: ticker || undefined },
           asset: null,
-          issues: ["No es una compra/venta"],
+          issues: [exclusionReason],
           excluded: true,
         });
         return;
@@ -260,7 +317,10 @@ export function buildDrafts(
     }
 
     const assetType =
-      normalizeAssetType(get("assetType")) ?? tickerTypes.get(ticker) ?? null;
+      normalizeAssetType(get("assetType")) ??
+      (raw.format === "cocos" ? inferCocosAssetType(instrument) : null) ??
+      tickerTypes.get(ticker) ??
+      null;
 
     const values: ImportRowDraft["values"] = {
       side,
@@ -272,13 +332,28 @@ export function buildDrafts(
       date: date ? new Date(date) : undefined,
       fee: fee ?? undefined,
       note,
+      importSource: raw.format,
+      externalId:
+        raw.format === "cocos" && row.nroTicket != null
+          ? String(row.nroTicket)
+          : undefined,
     };
+
+    if (raw.format === "cocos") {
+      values.note = note || String(instrument ?? "").trim() || undefined;
+    }
+
+    const issues = computeIssues(values);
+    if (raw.format === "cocos") {
+      const reconciliationIssue = cocosReconciliationIssue(row);
+      if (reconciliationIssue) issues.push(reconciliationIssue);
+    }
 
     drafts.push({
       index: i + 2,
       values,
       asset: null,
-      issues: computeIssues(values),
+      issues,
       excluded: false,
     });
   });

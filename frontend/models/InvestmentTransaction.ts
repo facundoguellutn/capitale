@@ -17,11 +17,20 @@ const investmentTransactionSchema = new Schema(
     accountId: { type: Schema.Types.ObjectId, ref: "Account", required: true },
     fee: { type: Number, min: 0 },
     note: { type: String, trim: true },
+    importSource: {
+      type: String,
+      enum: ["iol", "cocos", "generic"],
+    },
+    externalId: { type: String, trim: true },
   },
   { timestamps: true }
 );
 
 investmentTransactionSchema.index({ ticker: 1, date: 1 });
+investmentTransactionSchema.index(
+  { importSource: 1, externalId: 1 },
+  { sparse: true }
+);
 
 export type InvestmentTransactionDoc = InferSchemaType<
   typeof investmentTransactionSchema

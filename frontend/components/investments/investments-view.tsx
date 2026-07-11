@@ -11,9 +11,8 @@ import {
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ASSET_TYPE_LABELS } from "@/lib/constants";
-import { cn, formatDate, formatMoney, formatPercent } from "@/lib/utils";
-import { convertAmount, formatMoneyIn } from "@/lib/fx";
+import { cn, formatDate, formatMoney } from "@/lib/utils";
+import { formatMoneyIn } from "@/lib/fx";
 import { useDisplayCurrency } from "@/components/display-currency";
 import type {
   ClientFixedTerm,
@@ -29,6 +28,8 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { AccountLabel } from "@/components/accounts/account-label";
 import { AssetLogo } from "@/components/asset-logo";
+import { AnalysisView } from "@/components/investments/analysis/analysis-view";
+import { HoldingsTable } from "@/components/investments/holdings-table";
 import { InvestmentDialog } from "@/components/investments/investment-dialog";
 import {
   CollectFixedTermDialog,
@@ -53,24 +54,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-function PnlText({ pnl, pnlPct, currency }: { pnl: number | null; pnlPct: number | null; currency: "ARS" | "USD" }) {
-  if (pnl == null) return <span className="text-muted-foreground">—</span>;
-  return (
-    <span
-      className={cn(
-        "font-medium",
-        pnl >= 0
-          ? "text-positive"
-          : "text-negative"
-      )}
-    >
-      {pnl >= 0 ? "+" : ""}
-      {formatMoney(pnl, currency)}
-      {pnlPct != null && ` (${formatPercent(pnlPct)})`}
-    </span>
-  );
-}
 
 export function InvestmentsView() {
   const { data, isPending } = useInvestments();
@@ -118,7 +101,7 @@ export function InvestmentsView() {
     <div>
       <PageHeader
         title="Inversiones"
-        description="Cartera, operaciones y plazos fijos"
+        description="Cartera, operaciones, plazos fijos y análisis"
       >
         <Link
           href="/inversiones/importar"
@@ -153,6 +136,7 @@ export function InvestmentsView() {
           <TabsTrigger value="cartera">Cartera</TabsTrigger>
           <TabsTrigger value="operaciones">Operaciones</TabsTrigger>
           <TabsTrigger value="plazos-fijos">Plazos fijos</TabsTrigger>
+          <TabsTrigger value="analisis">Análisis</TabsTrigger>
         </TabsList>
 
         <TabsContent value="cartera">
@@ -177,111 +161,7 @@ export function InvestmentsView() {
                         <> · {formatMoney(totalValueARS, "ARS")}</>
                       ))}
                   </p>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Ticker</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead className="text-right">Cantidad</TableHead>
-                        <TableHead className="text-right">PPC</TableHead>
-                        <TableHead className="text-right">Precio actual</TableHead>
-                        <TableHead className="text-right">
-                          Valor ({displayCurrency})
-                        </TableHead>
-                        <TableHead className="text-right">Resultado</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.holdings.map((holding) => (
-                        <TableRow key={holding.ticker}>
-                          <TableCell className="font-medium">
-                            <Link
-                              href={`/inversiones/${encodeURIComponent(holding.ticker)}`}
-                              className="flex items-center gap-2 hover:underline"
-                            >
-                              <AssetLogo
-                                ticker={holding.ticker}
-                                assetType={holding.assetType}
-                              />
-                              {holding.ticker}
-                            </Link>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">
-                              {ASSET_TYPE_LABELS[holding.assetType]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {holding.quantity.toLocaleString("es-AR", {
-                              maximumFractionDigits: 8,
-                            })}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatMoneyIn(
-                              holding.avgPrice,
-                              holding.currency,
-                              displayCurrency,
-                              data.mep
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {holding.currentPrice != null ? (
-                              formatMoneyIn(
-                                holding.currentPrice,
-                                holding.assetType === "cripto" ? "USD" : "ARS",
-                                displayCurrency,
-                                data.mep
-                              )
-                            ) : (
-                              <Badge variant="secondary">Sin cotización</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {(() => {
-                              const value =
-                                displayCurrency === "ARS"
-                                  ? holding.valueARS
-                                  : holding.valueUSD;
-                              if (value != null)
-                                return formatMoney(value, displayCurrency);
-                              // Sin MEP no hay conversión: mostrar lo que haya
-                              if (holding.valueARS != null)
-                                return formatMoney(holding.valueARS, "ARS");
-                              if (holding.valueUSD != null)
-                                return formatMoney(holding.valueUSD, "USD");
-                              return "—";
-                            })()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {(() => {
-                              const converted =
-                                holding.pnl != null
-                                  ? convertAmount(
-                                      holding.pnl,
-                                      "ARS",
-                                      displayCurrency,
-                                      data.mep
-                                    )
-                                  : null;
-                              return converted != null ? (
-                                <PnlText
-                                  pnl={converted}
-                                  pnlPct={holding.pnlPct}
-                                  currency={displayCurrency}
-                                />
-                              ) : (
-                                <PnlText
-                                  pnl={holding.pnl}
-                                  pnlPct={holding.pnlPct}
-                                  currency="ARS"
-                                />
-                              );
-                            })()}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <HoldingsTable holdings={data.holdings} mep={data.mep} />
                 </>
               ) : (
                 <p className="py-8 text-center text-sm text-muted-foreground">
@@ -501,6 +381,10 @@ export function InvestmentsView() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="analisis">
+          <AnalysisView />
         </TabsContent>
       </Tabs>
 

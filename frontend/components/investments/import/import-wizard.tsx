@@ -10,6 +10,7 @@ import { parseFile } from "@/lib/import/parse";
 import { autoMapColumns, buildDrafts, computeIssues } from "@/lib/import/normalize";
 import {
   REQUIRED_FIELDS,
+  type ImportFormat,
   type ColumnMapping,
   type ImportRowDraft,
   type RawTable,
@@ -37,6 +38,12 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 type Step = "file" | "map" | "preview";
+
+const FORMAT_LABELS: Record<ImportFormat, string> = {
+  generic: "Formato genérico",
+  iol: "InvertirOnline",
+  cocos: "Cocos Capital",
+};
 
 function mappingComplete(mapping: ColumnMapping) {
   return REQUIRED_FIELDS.every((field) => mapping[field]);
@@ -141,7 +148,7 @@ export function ImportWizard() {
       </Link>
       <PageHeader
         title="Importar operaciones"
-        description="Cargá el Excel de tu broker (IOL exporta desde Mi Cuenta → Movimientos) o la plantilla genérica"
+        description="Cargá el Excel de InvertirOnline, Cocos Capital o la plantilla genérica"
       />
 
       {step === "file" && (
@@ -176,8 +183,8 @@ export function ImportWizard() {
             </button>
             <div className="text-sm text-muted-foreground">
               <p className="mb-1">
-                ¿No tenés un export? Usá la plantilla genérica (sirve para Cocos
-                Capital o para cargar a mano):
+                ¿No tenés un export compatible? Usá la plantilla genérica para
+                cargar las operaciones a mano:
               </p>
               <a
                 href="/plantilla-importacion.csv"
@@ -237,7 +244,9 @@ export function ImportWizard() {
             <CardHeader>
               <CardTitle>Revisión</CardTitle>
               <CardDescription>
-                {fileName} · {validDrafts.length} válidas de {drafts.length}{" "}
+                {fileName}
+                {raw && ` · Formato detectado: ${FORMAT_LABELS[raw.format]}`} ·{" "}
+                {validDrafts.length} válidas de {drafts.length}{" "}
                 filas
                 {includedInvalid.length > 0 &&
                   ` · ${includedInvalid.length} con errores (no se importan)`}

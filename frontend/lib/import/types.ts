@@ -2,6 +2,9 @@
 import type { InvestmentTransactionInput } from "@/lib/schemas";
 import type { AssetSearchResult } from "@/lib/types";
 
+export const IMPORT_FORMATS = ["generic", "iol", "cocos"] as const;
+export type ImportFormat = (typeof IMPORT_FORMATS)[number];
+
 // Campos de una operación que pueden venir mapeados desde el archivo
 export const IMPORT_FIELDS = [
   "date",
@@ -43,6 +46,7 @@ export type ColumnMapping = Partial<Record<ImportField, string>>;
 export type RawTable = {
   headers: string[];
   rows: Record<string, unknown>[];
+  format: ImportFormat;
 };
 
 export type ImportRowDraft = {

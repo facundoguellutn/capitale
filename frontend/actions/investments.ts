@@ -60,7 +60,12 @@ function duplicateKey(tx: {
   side: string;
   quantity: number;
   price: number;
+  importSource?: string;
+  externalId?: string;
 }) {
+  if (tx.importSource && tx.externalId) {
+    return `${tx.importSource}|${tx.externalId}`;
+  }
   return [tx.ticker, tx.date.toISOString(), tx.side, tx.quantity, tx.price].join("|");
 }
 
@@ -75,22 +80,31 @@ export async function createInvestmentTransactionsBulk(
 
   // Saltea las operaciones que ya existen con misma clave
   const existing = await InvestmentTransaction.find({
-    $or: parsed.data.map((tx) => ({
-      ticker: tx.ticker,
-      date: tx.date,
-      side: tx.side,
-      quantity: tx.quantity,
-      price: tx.price,
-    })),
+    $or: parsed.data.map((tx) =>
+      tx.importSource && tx.externalId
+        ? { importSource: tx.importSource, externalId: tx.externalId }
+        : {
+            ticker: tx.ticker,
+            date: tx.date,
+            side: tx.side,
+            quantity: tx.quantity,
+            price: tx.price,
+          }
+    ),
   }).lean();
   const existingKeys = new Set(
     existing.map((tx) =>
       duplicateKey({ ...tx, date: new Date(tx.date as Date) })
     )
   );
-  const toInsert = parsed.data.filter(
-    (tx) => !existingKeys.has(duplicateKey(tx))
-  );
+  // También elimina repetidas dentro del mismo archivo antes de insertarlas.
+  const batchKeys = new Set<string>();
+  const toInsert = parsed.data.filter((tx) => {
+    const key = duplicateKey(tx);
+    if (existingKeys.has(key) || batchKeys.has(key)) return false;
+    batchKeys.add(key);
+    return true;
+  });
   const skipped = parsed.data.length - toInsert.length;
   if (toInsert.length === 0) return { ok: true, inserted: 0, skipped };
 

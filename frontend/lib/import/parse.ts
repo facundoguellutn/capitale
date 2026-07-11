@@ -1,7 +1,36 @@
 // Lectura de archivos CSV/XLS/XLSX en el navegador. El archivo nunca sube al
 // server: se parsea acá y solo viajan las filas normalizadas y validadas.
 import { countHeaderMatches } from "@/lib/import/normalize";
-import type { RawTable } from "@/lib/import/types";
+import type { ImportFormat, RawTable } from "@/lib/import/types";
+
+function normalizedHeader(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+export function detectImportFormat(headers: string[]): ImportFormat {
+  const normalized = new Set(headers.map(normalizedHeader));
+  const cocosHeaders = [
+    "nroticket",
+    "fechaejecucion",
+    "tipooperacion",
+    "instrumento",
+    "montobruto",
+    "total",
+  ];
+  if (cocosHeaders.every((header) => normalized.has(header))) return "cocos";
+
+  if (
+    normalized.has("tipomov") &&
+    (normalized.has("concert") || normalized.has("concertacion"))
+  ) {
+    return "iol";
+  }
+  return "generic";
+}
 
 // Los exports de brokers suelen traer filas de título antes de los headers
 // (IOL: "Operaciones Historicas del periodo..."). Se busca en las primeras
@@ -88,5 +117,5 @@ export async function parseFile(file: File): Promise<RawTable> {
   }
   if (rows.length === 0) throw new Error("El archivo no tiene filas de datos");
 
-  return { headers, rows };
+  return { headers, rows, format: detectImportFormat(headers) };
 }

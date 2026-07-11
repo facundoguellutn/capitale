@@ -64,6 +64,8 @@ export const investmentTransactionSchema = z
     accountId: objectId,
     fee: z.coerce.number().min(0).optional(),
     note: z.string().optional(),
+    importSource: z.enum(["iol", "cocos", "generic"]).optional(),
+    externalId: z.string().trim().min(1).optional(),
   })
   .refine((data) => data.assetType !== "cripto" || !!data.coingeckoId, {
     message: "Para cripto ingresá el id de CoinGecko (ej: bitcoin)",
